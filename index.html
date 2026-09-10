@@ -119,10 +119,10 @@
 <body>
 
 <div id="login">
-  <h1>چت</h1>
-  <p>کدتو بزن </p>
-  <input id="codeInput" type="password" placeholder="کد" autocomplete="off">
-  <button id="enterBtn">برو داخل</button>
+  <h1>چت </h1>
+  <p>کدی که داده بودم رو بزن</p>
+  <input id="codeInput" type="password" placeholder="بزن کدو" autocomplete="off">
+  <button id="enterBtn">ورود</button>
   <div id="loginError"></div>
 </div>
 
@@ -169,7 +169,7 @@
 
   const BROKER = "wss://broker.emqx.io:8084/mqtt";
 
-  // ── لوگوهای رسمی (از ویکی‌پدیا) ──
+  // ── لوگوهای رسمی ──
   const BARCA_LOGO = '<img src="https://upload.wikimedia.org/wikipedia/en/4/47/FC_Barcelona_%28crest%29.svg" alt="Barça">';
   const REAL_LOGO  = '<img src="https://upload.wikimedia.org/wikipedia/en/5/56/Real_Madrid_CF.svg" alt="Real">';
 
@@ -181,6 +181,7 @@
 
   let client = null;
   let myName = null;
+  let ROOM_HASH = null;
   let TOPIC_MINE = null, TOPIC_THEIRS = null, TOPIC_DELETED = null;
   let myMessages = [];
   let theirMessages = [];
@@ -207,6 +208,34 @@
   async function hashCode(str){
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('').slice(0, 20);
+  }
+
+  // ── کش ──
+  function cacheKey(suffix){
+    return 'chat_v2_' + ROOM_HASH + '_' + myName + '_' + suffix;
+  }
+  function saveCache(){
+    try {
+      localStorage.setItem(cacheKey('mine'), JSON.stringify(myMessages));
+      localStorage.setItem(cacheKey('theirs'), JSON.stringify(theirMessages));
+      localStorage.setItem(cacheKey('deleted'), JSON.stringify([...deletedIds]));
+      localStorage.setItem(cacheKey('hidden'), JSON.stringify([...hiddenIds]));
+    } catch(e){}
+  }
+  function loadCache(){
+    try {
+      const m = localStorage.getItem(cacheKey('mine'));
+      const t = localStorage.getItem(cacheKey('theirs'));
+      const d = localStorage.getItem(cacheKey('deleted'));
+      const h = localStorage.getItem(cacheKey('hidden'));
+      myMessages = m ? JSON.parse(m) : [];
+      theirMessages = t ? JSON.parse(t) : [];
+      deletedIds = new Set(d ? JSON.parse(d) : []);
+      hiddenIds = new Set(h ? JSON.parse(h) : []);
+    } catch(e){
+      myMessages = []; theirMessages = [];
+      deletedIds = new Set(); hiddenIds = new Set();
+    }
   }
 
   // ── رندر ──
@@ -324,6 +353,7 @@
         const mm = myMessages.find(x => x.id === m.id);
         if (mm) { mm.text = newText; mm.edited = true; }
         publishMyHistory();
+        saveCache();
         syncUI();
       } else {
         textEl.innerHTML = esc(original) + (m.edited ? ' <span class="edited">(ویرایش شده)</span>' : '');
@@ -342,12 +372,11 @@
       if (b.dataset.scope === 'all') {
         deletedIds.add(id);
         publishDeleted();
-        syncUI();
       } else {
         hiddenIds.add(id);
-        saveHidden();
-        syncUI();
       }
+      saveCache();
+      syncUI();
       deleteModal.classList.add('hidden');
       pendingDeleteId = null;
     };
@@ -357,26 +386,17 @@
     pendingDeleteId = null;
   };
 
-  function saveHidden(){
-    try { localStorage.setItem('chat_hidden_' + myName, JSON.stringify([...hiddenIds])); } catch(e){}
-  }
-  function loadHidden(){
-    try {
-      const raw = localStorage.getItem('chat_hidden_' + myName);
-      hiddenIds = new Set(raw ? JSON.parse(raw) : []);
-    } catch(e){ hiddenIds = new Set(); }
-  }
-
   // ── ارسال ──
   function send(){
     const text = msgInput.value.trim();
-    if (!text || !client || !client.connected) return;
+    if (!text) return;
     const msg = { id: uid(), sender: myName, text, time: Date.now(), edited: false };
     if (replyingTo) {
       msg.replyPreview = { sender: replyingTo.sender, text: replyingTo.text.slice(0, 80) };
     }
     myMessages.push(msg);
     publishMyHistory();
+    saveCache();
     syncUI();
     scrollBottom(true);
     msgInput.value = '';
@@ -420,13 +440,31 @@
       try { data = JSON.parse(payload.toString()); } catch { return; }
 
       if (topic === TOPIC_MINE) {
-        myMessages = data.messages || [];
+        // اگه نسخه سرور جدیدتر بود (پیام بیشتر)، جایگزین کن
+        const serverMsgs = data.messages || [];
+        if (serverMsgs.length >= myMessages.length) {
+          myMessages = serverMsgs;
+        } else {
+          // ادغام: پیامهای لوکال که سرور نداره رو هم نگه دار
+          const ids = new Set(serverMsgs.map(m => m.id));
+          const extra = myMessages.filter(m => !ids.has(m.id));
+          myMessages = serverMsgs.concat(extra).sort((a, b) => a.time - b.time);
+        }
+        saveCache();
         syncUI();
         return;
       }
 
       if (topic === TOPIC_THEIRS) {
-        theirMessages = data.messages || [];
+        const serverMsgs = data.messages || [];
+        if (serverMsgs.length >= theirMessages.length) {
+          theirMessages = serverMsgs;
+        } else {
+          const ids = new Set(serverMsgs.map(m => m.id));
+          const extra = theirMessages.filter(m => !ids.has(m.id));
+          theirMessages = serverMsgs.concat(extra).sort((a, b) => a.time - b.time);
+        }
+        saveCache();
         syncUI();
         return;
       }
@@ -435,7 +473,10 @@
         const arr = data.ids || [];
         let changed = false;
         arr.forEach(id => { if (!deletedIds.has(id)) { deletedIds.add(id); changed = true; } });
-        if (changed) publishDeleted();
+        if (changed) {
+          saveCache();
+          if (client && client.connected) publishDeleted();
+        }
         syncUI();
         return;
       }
@@ -460,19 +501,17 @@
     localStorage.setItem('chat_code', code);
 
     const roomKey = [CODES.Hatami, CODES.Armin].sort().join('|');
-    const h = await hashCode(roomKey);
-    TOPIC_MINE    = 'pc/' + h + '/H/' + myName;
-    TOPIC_THEIRS  = 'pc/' + h + '/H/' + otherName;
-    TOPIC_DELETED = 'pc/' + h + '/D';
+    ROOM_HASH = await hashCode(roomKey);
+    TOPIC_MINE    = 'pc/' + ROOM_HASH + '/H/' + myName;
+    TOPIC_THEIRS  = 'pc/' + ROOM_HASH + '/H/' + otherName;
+    TOPIC_DELETED = 'pc/' + ROOM_HASH + '/D';
 
-    loadHidden();
-
-    myMessages = [];
-    theirMessages = [];
-    deletedIds = new Set();
+    // ⚡ اول از کش بخون و فوری نمایش بده
+    loadCache();
     messagesById = {};
-    firstRender = true;
     messagesEl.innerHTML = '';
+    firstRender = true;
+    syncUI();
 
     loginEl.classList.add('hidden');
     chatEl.classList.remove('hidden');
@@ -531,4 +570,4 @@
 })();
 </script>
 </body>
-  </html>
+ </html>
