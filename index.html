@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0f1720">
+<link rel="preconnect" href="https://broker.emqx.io">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <title>چت خصوصی</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -75,6 +77,17 @@
   }
   .msg .team-icon img{display:block;width:100%;height:100%;object-fit:contain}
 
+  .msg .tick{
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:700;letter-spacing:-3px;
+    margin-right:2px;
+    color:#c8d3de;
+    transition:color .2s;
+  }
+  .msg.from-armin .tick{color:#8a8a8a}
+  .msg .tick.seen{color:#4fc3f7}
+  .msg.from-armin .tick.seen{color:#2b9de8}
+
   .reply-preview{
     background: var(--overlay-bg);
     border-right:3px solid var(--overlay-border);
@@ -120,8 +133,8 @@
 
 <div id="login">
   <h1>چت </h1>
-  <p>کدی که داده بودم رو بزن</p>
-  <input id="codeInput" type="password" placeholder="بزن کدو" autocomplete="off">
+  <p>کدتو بنوبس</p>
+  <input id="codeInput" type="password" placeholder="کدی که داده بودمو بزن" autocomplete="off">
   <button id="enterBtn">ورود</button>
   <div id="loginError"></div>
 </div>
@@ -155,8 +168,18 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
+// ─── پیش‌بارگذاری MQTT (موازی، قبل از login) ───
+var mqttReadyPromise = new Promise(function(resolve, reject){
+  var s = document.createElement('script');
+  s.src = "https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js";
+  s.async = true;
+  s.onload = resolve;
+  s.onerror = function(){ mqttReadyPromise = null; reject(new Error('mqtt load fail')); };
+  document.head.appendChild(s);
+});
+mqttReadyPromise.catch(function(){});
+
 (function(){
   // ═══════════════════════════════════════════
   // ⚙️ کدها رو اینجا عوض کن
@@ -169,7 +192,6 @@
 
   const BROKER = "wss://broker.emqx.io:8084/mqtt";
 
-  // ── لوگوهای رسمی ──
   const BARCA_LOGO = '<img src="https://upload.wikimedia.org/wikipedia/en/4/47/FC_Barcelona_%28crest%29.svg" alt="Barça">';
   const REAL_LOGO  = '<img src="https://upload.wikimedia.org/wikipedia/en/5/56/Real_Madrid_CF.svg" alt="Real">';
 
@@ -182,7 +204,7 @@
   let client = null;
   let myName = null;
   let ROOM_HASH = null;
-  let TOPIC_MINE = null, TOPIC_THEIRS = null, TOPIC_DELETED = null;
+  let TOPIC_MINE, TOPIC_THEIRS, TOPIC_DELETED, TOPIC_SEEN_MINE, TOPIC_SEEN_THEIRS;
   let myMessages = [];
   let theirMessages = [];
   let deletedIds = new Set();
@@ -191,11 +213,13 @@
   let pendingDeleteId = null;
   let editingId = null;
   let replyingTo = null;
-  let firstRender = true;
+  let peerSeenUpTo = 0;
+  let lastSeenPublish = 0;
 
   // ── ابزار ──
   const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
   function fmtTime(ts){
     const d = new Date(ts), now = new Date();
     const hh = ('0'+d.getHours()).slice(-2), mm = ('0'+d.getMinutes()).slice(-2);
@@ -205,37 +229,63 @@
   }
   const isAtBottom = () => messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
   const scrollBottom = smooth => messagesEl.scrollTo({top: messagesEl.scrollHeight, behavior: smooth ? 'smooth' : 'auto'});
-  async function hashCode(str){
+
+  function simpleHash(str){
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+    h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+    h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+
+  async function sha256(str){
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('').slice(0, 20);
   }
 
-  // ── کش ──
-  function cacheKey(suffix){
-    return 'chat_v2_' + ROOM_HASH + '_' + myName + '_' + suffix;
+  // ── کش hash اتاق ──
+  async function getRoomHash(){
+    const codesId = CODES.Hatami + '|' + CODES.Armin;
+    const key = 'rh_v1_' + simpleHash(codesId);
+    let h = localStorage.getItem(key);
+    if (h) return h;
+    const sorted = [CODES.Hatami, CODES.Armin].sort().join('|');
+    h = await sha256(sorted);
+    try { localStorage.setItem(key, h); } catch(e){}
+    return h;
   }
-  function saveCache(){
+
+  // ── کش پیام‌ها (یک کلید سریع، بدون درگیر hash) ──
+  function quickKey(user){ return 'chat_q1_' + user; }
+  function loadQuick(){
     try {
-      localStorage.setItem(cacheKey('mine'), JSON.stringify(myMessages));
-      localStorage.setItem(cacheKey('theirs'), JSON.stringify(theirMessages));
-      localStorage.setItem(cacheKey('deleted'), JSON.stringify([...deletedIds]));
-      localStorage.setItem(cacheKey('hidden'), JSON.stringify([...hiddenIds]));
+      const raw = localStorage.getItem(quickKey(myName));
+      if (!raw) return false;
+      const p = JSON.parse(raw);
+      myMessages = p.mine || [];
+      theirMessages = p.theirs || [];
+      deletedIds = new Set(p.deleted || []);
+      hiddenIds = new Set(p.hidden || []);
+      peerSeenUpTo = p.peerSeen || 0;
+      return true;
+    } catch(e){ return false; }
+  }
+  function saveQuick(){
+    try {
+      localStorage.setItem(quickKey(myName), JSON.stringify({
+        mine: myMessages,
+        theirs: theirMessages,
+        deleted: [...deletedIds],
+        hidden: [...hiddenIds],
+        peerSeen: peerSeenUpTo
+      }));
     } catch(e){}
-  }
-  function loadCache(){
-    try {
-      const m = localStorage.getItem(cacheKey('mine'));
-      const t = localStorage.getItem(cacheKey('theirs'));
-      const d = localStorage.getItem(cacheKey('deleted'));
-      const h = localStorage.getItem(cacheKey('hidden'));
-      myMessages = m ? JSON.parse(m) : [];
-      theirMessages = t ? JSON.parse(t) : [];
-      deletedIds = new Set(d ? JSON.parse(d) : []);
-      hiddenIds = new Set(h ? JSON.parse(h) : []);
-    } catch(e){
-      myMessages = []; theirMessages = [];
-      deletedIds = new Set(); hiddenIds = new Set();
-    }
   }
 
   // ── رندر ──
@@ -246,16 +296,24 @@
     const isHatami = m.sender === 'Hatami';
     const team = isHatami ? 'barca' : 'real';
     const teamLogo = isHatami ? BARCA_LOGO : REAL_LOGO;
-    const posClass = mine ? 'mine' : 'theirs';
 
     const el = document.createElement('div');
-    el.className = 'msg ' + posClass + ' from-' + (isHatami ? 'hatami' : 'armin');
+    el.className = 'msg ' + (mine ? 'mine' : 'theirs') + ' from-' + (isHatami ? 'hatami' : 'armin');
     el.dataset.id = m.id;
 
     let replyHtml = '';
     if (m.replyPreview) {
       replyHtml = '<div class="reply-preview"><b>' + esc(m.replyPreview.sender) + '</b>' +
-                  esc(m.replyPreview.text.slice(0, 60)) + '</div>';
+                  esc((m.replyPreview.text || '').slice(0, 60)) + '</div>';
+    }
+
+    const textHtml = '<div class="text">' + esc(m.text) +
+      (m.edited ? ' <span class="edited">(ویرایش شده)</span>' : '') + '</div>';
+
+    let tickHtml = '';
+    if (mine) {
+      const seen = peerSeenUpTo >= m.time;
+      tickHtml = '<span class="tick' + (seen ? ' seen' : '') + '">' + (seen ? '✓✓' : '✓') + '</span>';
     }
 
     const meta = '<div class="meta">' +
@@ -264,12 +322,10 @@
       '<button class="act reply" title="پاسخ">↩</button>' +
       (mine ? '<button class="act edit" title="ویرایش">✎</button>' : '') +
       '<button class="act del" title="حذف">🗑</button>' +
+      tickHtml +
       '</div>';
 
-    el.innerHTML = replyHtml +
-      '<div class="text">' + esc(m.text) +
-      (m.edited ? ' <span class="edited">(ویرایش شده)</span>' : '') +
-      '</div>' + meta;
+    el.innerHTML = replyHtml + textHtml + meta;
 
     messagesById[m.id] = { data: m, el: el };
     messagesEl.appendChild(el);
@@ -278,6 +334,19 @@
     if (mine) el.querySelector('.edit').onclick = () => startEdit(m);
     el.querySelector('.del').onclick = () => startDelete(m.id);
   }
+
+  function updateTick(id){
+    const rec = messagesById[id];
+    if (!rec) return;
+    const tickEl = rec.el.querySelector('.tick');
+    if (!tickEl) return;
+    const seen = peerSeenUpTo >= rec.data.time;
+    if (seen && !tickEl.classList.contains('seen')) {
+      tickEl.classList.add('seen');
+      tickEl.textContent = '✓✓';
+    }
+  }
+  function updateAllTicks(){ for (const id in messagesById) updateTick(id); }
 
   function updateMessageText(id, text, edited){
     const rec = messagesById[id];
@@ -294,32 +363,42 @@
     delete messagesById[id];
   }
 
-  // ── syncUI ──
-  function syncUI(){
-    const visible = [...myMessages, ...theirMessages]
-      .filter(m => !deletedIds.has(m.id) && !hiddenIds.has(m.id))
-      .sort((a, b) => a.time - b.time);
+  // ── یک تابع که لیست رو مرتب می‌کنه ──
+  function mergeById(a, b){
+    const map = new Map();
+    a.forEach(m => map.set(m.id, m));
+    b.forEach(m => {
+      const old = map.get(m.id);
+      if (!old || m.time >= old.time) map.set(m.id, m);
+    });
+    return [...map.values()].sort((x,y) => x.time - y.time);
+  }
+
+  function renderAll(){
+    const visible = mergeById(myMessages, theirMessages)
+      .filter(m => !deletedIds.has(m.id) && !hiddenIds.has(m.id));
 
     const visibleIds = new Set(visible.map(m => m.id));
-
     for (const id in messagesById) {
       if (!visibleIds.has(id)) removeMessage(id);
     }
 
     const stick = isAtBottom();
     let added = 0;
-
     visible.forEach(m => {
       if (m.id === editingId) return;
       const rec = messagesById[m.id];
       if (!rec) { renderMessage(m); added++; }
-      else if (rec.data.text !== m.text || rec.data.edited !== m.edited) {
-        updateMessageText(m.id, m.text, m.edited);
+      else {
+        if (rec.data.text !== m.text || rec.data.edited !== m.edited) {
+          updateMessageText(m.id, m.text, m.edited);
+        }
+        rec.data = m;
       }
     });
 
-    if (firstRender && added > 0) { scrollBottom(false); firstRender = false; }
-    else if (stick && added > 0) scrollBottom(true);
+    if (added > 0) scrollBottom(false);
+    updateAllTicks();
   }
 
   // ── پاسخ ──
@@ -349,18 +428,18 @@
 
     const finish = (newText) => {
       editingId = null;
-      if (newText && newText !== original) {
+      if (newText !== null && newText !== original) {
         const mm = myMessages.find(x => x.id === m.id);
         if (mm) { mm.text = newText; mm.edited = true; }
         publishMyHistory();
-        saveCache();
-        syncUI();
+        saveQuick();
+        renderAll();
       } else {
         textEl.innerHTML = esc(original) + (m.edited ? ' <span class="edited">(ویرایش شده)</span>' : '');
       }
     };
     textEl.querySelector('.cancel').onclick = () => finish(null);
-    textEl.querySelector('.save').onclick = () => finish(ta.value.trim());
+    textEl.querySelector('.save').onclick = () => finish(ta.value);
   }
 
   // ── حذف ──
@@ -375,8 +454,8 @@
       } else {
         hiddenIds.add(id);
       }
-      saveCache();
-      syncUI();
+      saveQuick();
+      renderAll();
       deleteModal.classList.add('hidden');
       pendingDeleteId = null;
     };
@@ -392,12 +471,12 @@
     if (!text) return;
     const msg = { id: uid(), sender: myName, text, time: Date.now(), edited: false };
     if (replyingTo) {
-      msg.replyPreview = { sender: replyingTo.sender, text: replyingTo.text.slice(0, 80) };
+      msg.replyPreview = { sender: replyingTo.sender, text: replyingTo.text };
     }
     myMessages.push(msg);
     publishMyHistory();
-    saveCache();
-    syncUI();
+    saveQuick();
+    renderAll();
     scrollBottom(true);
     msgInput.value = '';
     cancelReply();
@@ -417,8 +496,18 @@
     if (!client || !client.connected) return;
     client.publish(TOPIC_DELETED, JSON.stringify({ ids: [...deletedIds] }), { qos: 1, retain: true });
   }
+  function publishSeen(force){
+    const now = Date.now();
+    if (!force && now - lastSeenPublish < 1500) return;
+    lastSeenPublish = now;
+    if (!client || !client.connected) return;
+    client.publish(TOPIC_SEEN_MINE, JSON.stringify({ t: now }), { qos: 1, retain: true });
+  }
 
-  function connectMQTT(){
+  async function connectMQTT(){
+    try { await mqttReadyPromise; }
+    catch(e) { setTimeout(connectMQTT, 2000); return; }
+
     client = mqtt.connect(BROKER, {
       clientId: 'chat_' + Math.random().toString(16).slice(2, 12),
       clean: true,
@@ -431,41 +520,32 @@
       client.subscribe(TOPIC_MINE, { qos: 1 });
       client.subscribe(TOPIC_THEIRS, { qos: 1 });
       client.subscribe(TOPIC_DELETED, { qos: 1 });
+      client.subscribe(TOPIC_SEEN_THEIRS, { qos: 1 });
+      // وقتی وصل شد، خودم رو "دیده" علامت بزن
+      setTimeout(() => publishSeen(true), 400);
     });
 
-    client.on('error', e => { console.error('MQTT error', e); });
+    client.on('error', e => console.error('MQTT error', e));
 
     client.on('message', (topic, payload) => {
       let data;
       try { data = JSON.parse(payload.toString()); } catch { return; }
 
       if (topic === TOPIC_MINE) {
-        // اگه نسخه سرور جدیدتر بود (پیام بیشتر)، جایگزین کن
         const serverMsgs = data.messages || [];
-        if (serverMsgs.length >= myMessages.length) {
-          myMessages = serverMsgs;
-        } else {
-          // ادغام: پیامهای لوکال که سرور نداره رو هم نگه دار
-          const ids = new Set(serverMsgs.map(m => m.id));
-          const extra = myMessages.filter(m => !ids.has(m.id));
-          myMessages = serverMsgs.concat(extra).sort((a, b) => a.time - b.time);
-        }
-        saveCache();
-        syncUI();
+        myMessages = mergeById(serverMsgs, myMessages);
+        saveQuick();
+        renderAll();
         return;
       }
 
       if (topic === TOPIC_THEIRS) {
         const serverMsgs = data.messages || [];
-        if (serverMsgs.length >= theirMessages.length) {
-          theirMessages = serverMsgs;
-        } else {
-          const ids = new Set(serverMsgs.map(m => m.id));
-          const extra = theirMessages.filter(m => !ids.has(m.id));
-          theirMessages = serverMsgs.concat(extra).sort((a, b) => a.time - b.time);
-        }
-        saveCache();
-        syncUI();
+        const hadCount = theirMessages.length;
+        theirMessages = mergeById(serverMsgs, theirMessages);
+        saveQuick();
+        renderAll();
+        if (theirMessages.length > hadCount) publishSeen();
         return;
       }
 
@@ -474,23 +554,33 @@
         let changed = false;
         arr.forEach(id => { if (!deletedIds.has(id)) { deletedIds.add(id); changed = true; } });
         if (changed) {
-          saveCache();
-          if (client && client.connected) publishDeleted();
+          saveQuick();
+          if (client.connected) publishDeleted();
+          renderAll();
         }
-        syncUI();
+        return;
+      }
+
+      if (topic === TOPIC_SEEN_THEIRS) {
+        const t = data.t || 0;
+        if (t > peerSeenUpTo) {
+          peerSeenUpTo = t;
+          saveQuick();
+          updateAllTicks();
+        }
         return;
       }
     });
   }
 
   // ── ورود ──
-  async function tryLogin(code){
+  function tryLogin(code){
     let user = null;
     if (code === CODES.Hatami) user = 'Hatami';
     else if (code === CODES.Armin) user = 'Armin';
     else { loginError.textContent = 'کد اشتباهه'; return; }
     loginError.textContent = '';
-    await startSession(user, code);
+    startSession(user, code);
   }
 
   async function startSession(user, code){
@@ -500,27 +590,34 @@
     localStorage.setItem('chat_user', user);
     localStorage.setItem('chat_code', code);
 
-    const roomKey = [CODES.Hatami, CODES.Armin].sort().join('|');
-    ROOM_HASH = await hashCode(roomKey);
-    TOPIC_MINE    = 'pc/' + ROOM_HASH + '/H/' + myName;
-    TOPIC_THEIRS  = 'pc/' + ROOM_HASH + '/H/' + otherName;
-    TOPIC_DELETED = 'pc/' + ROOM_HASH + '/D';
-
-    // ⚡ اول از کش بخون و فوری نمایش بده
-    loadCache();
+    // ⚡ اول از کش سریع لود کن و فوری نشون بده
+    loadQuick();
     messagesById = {};
     messagesEl.innerHTML = '';
-    firstRender = true;
-    syncUI();
+    renderAll();
+    scrollBottom(false);
 
+    // ⚡ بعد برو سراغ chat (نمایش فوری)
     loginEl.classList.add('hidden');
     chatEl.classList.remove('hidden');
+
+    // ⚡ hash اتاق رو بگیر (از کش، فوری)
+    ROOM_HASH = await getRoomHash();
+    TOPIC_MINE        = 'pc/' + ROOM_HASH + '/H/' + myName;
+    TOPIC_THEIRS      = 'pc/' + ROOM_HASH + '/H/' + otherName;
+    TOPIC_DELETED     = 'pc/' + ROOM_HASH + '/D';
+    TOPIC_SEEN_MINE   = 'pc/' + ROOM_HASH + '/S/' + myName;
+    TOPIC_SEEN_THEIRS = 'pc/' + ROOM_HASH + '/S/' + otherName;
+
+    // اتصال MQTT در پس‌زمینه
     connectMQTT();
-    setTimeout(() => msgInput.focus(), 300);
+
+    setTimeout(() => msgInput.focus(), 200);
   }
 
   // ── خروج ──
   function logout(){
+    if (myName) saveQuick();
     if (client) { try { client.end(true); } catch(e){} client = null; }
     localStorage.removeItem('chat_user');
     localStorage.removeItem('chat_code');
@@ -534,7 +631,8 @@
     pendingDeleteId = null;
     editingId = null;
     replyingTo = null;
-    firstRender = true;
+    peerSeenUpTo = 0;
+    lastSeenPublish = 0;
 
     messagesEl.innerHTML = '';
     codeInput.value = '';
@@ -558,6 +656,19 @@
     if (e.key === 'Enter') { e.preventDefault(); $('enterBtn').click(); }
   });
 
+  // وقتی برگشت به تب → «دیده» علامت بزن
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && myName && client && client.connected) {
+      publishSeen(true);
+    }
+  });
+
+  // ذخیره دوره‌ای کش
+  setInterval(() => { if (myName) saveQuick(); }, 20000);
+  window.addEventListener('pagehide', () => { if (myName) saveQuick(); });
+  window.addEventListener('beforeunload', () => { if (myName) saveQuick(); });
+
+  // ورود خودکار
   const savedUser = localStorage.getItem('chat_user');
   const savedCode = localStorage.getItem('chat_code');
   if (savedUser && savedCode) {
