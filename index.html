@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0f1720">
-<link rel="preconnect" href="https://broker.emqx.io">
+<link rel="preconnect" href="https://broker.emqx.io" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://broker.emqx.io">
 <title>چت خصوصی</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -132,9 +133,9 @@
 <body>
 
 <div id="login">
-  <h1>چت </h1>
-  <p>کدتو بنوبس</p>
-  <input id="codeInput" type="password" placeholder="کدی که داده بودمو بزن" autocomplete="off">
+  <h1>چت</h1>
+  <p>کدی که داده بودمو بزن</p>
+  <input id="codeInput" type="password" placeholder="کد دسترسی" autocomplete="off">
   <button id="enterBtn">ورود</button>
   <div id="loginError"></div>
 </div>
@@ -168,18 +169,8 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
-// ─── پیش‌بارگذاری MQTT (موازی، قبل از login) ───
-var mqttReadyPromise = new Promise(function(resolve, reject){
-  var s = document.createElement('script');
-  s.src = "https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js";
-  s.async = true;
-  s.onload = resolve;
-  s.onerror = function(){ mqttReadyPromise = null; reject(new Error('mqtt load fail')); };
-  document.head.appendChild(s);
-});
-mqttReadyPromise.catch(function(){});
-
 (function(){
   // ═══════════════════════════════════════════
   // ⚙️ کدها رو اینجا عوض کن
@@ -215,6 +206,8 @@ mqttReadyPromise.catch(function(){});
   let replyingTo = null;
   let peerSeenUpTo = 0;
   let lastSeenPublish = 0;
+  let seenHeartbeat = null;
+  let lastTheirCount = 0;
 
   // ── ابزار ──
   const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -249,10 +242,9 @@ mqttReadyPromise.catch(function(){});
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('').slice(0, 20);
   }
 
-  // ── کش hash اتاق ──
   async function getRoomHash(){
     const codesId = CODES.Hatami + '|' + CODES.Armin;
-    const key = 'rh_v1_' + simpleHash(codesId);
+    const key = 'rh_v2_' + simpleHash(codesId);
     let h = localStorage.getItem(key);
     if (h) return h;
     const sorted = [CODES.Hatami, CODES.Armin].sort().join('|');
@@ -261,8 +253,8 @@ mqttReadyPromise.catch(function(){});
     return h;
   }
 
-  // ── کش پیام‌ها (یک کلید سریع، بدون درگیر hash) ──
-  function quickKey(user){ return 'chat_q1_' + user; }
+  // ── کش پیام‌ها ──
+  function quickKey(user){ return 'chat_q2_' + user; }
   function loadQuick(){
     try {
       const raw = localStorage.getItem(quickKey(myName));
@@ -310,10 +302,11 @@ mqttReadyPromise.catch(function(){});
     const textHtml = '<div class="text">' + esc(m.text) +
       (m.edited ? ' <span class="edited">(ویرایش شده)</span>' : '') + '</div>';
 
+    // تیک فقط روی پیام‌های خودم
     let tickHtml = '';
     if (mine) {
       const seen = peerSeenUpTo >= m.time;
-      tickHtml = '<span class="tick' + (seen ? ' seen' : '') + '">' + (seen ? '✓✓' : '✓') + '</span>';
+      tickHtml = '<span class="tick' + (seen ? ' seen' : '') + '" data-time="' + m.time + '">' + (seen ? '✓✓' : '✓') + '</span>';
     }
 
     const meta = '<div class="meta">' +
@@ -335,18 +328,23 @@ mqttReadyPromise.catch(function(){});
     el.querySelector('.del').onclick = () => startDelete(m.id);
   }
 
-  function updateTick(id){
-    const rec = messagesById[id];
-    if (!rec) return;
-    const tickEl = rec.el.querySelector('.tick');
-    if (!tickEl) return;
-    const seen = peerSeenUpTo >= rec.data.time;
-    if (seen && !tickEl.classList.contains('seen')) {
-      tickEl.classList.add('seen');
-      tickEl.textContent = '✓✓';
+  // آپدیت همه تیک‌ها بر اساس peerSeenUpTo جدید
+  function updateAllTicks(){
+    let changed = false;
+    for (const id in messagesById) {
+      const rec = messagesById[id];
+      const tickEl = rec.el.querySelector('.tick');
+      if (!tickEl) continue;
+      const seen = peerSeenUpTo >= rec.data.time;
+      const currentlySeen = tickEl.classList.contains('seen');
+      if (seen && !currentlySeen) {
+        tickEl.classList.add('seen');
+        tickEl.textContent = '✓✓';
+        changed = true;
+      }
     }
+    return changed;
   }
-  function updateAllTicks(){ for (const id in messagesById) updateTick(id); }
 
   function updateMessageText(id, text, edited){
     const rec = messagesById[id];
@@ -363,7 +361,6 @@ mqttReadyPromise.catch(function(){});
     delete messagesById[id];
   }
 
-  // ── یک تابع که لیست رو مرتب می‌کنه ──
   function mergeById(a, b){
     const map = new Map();
     a.forEach(m => map.set(m.id, m));
@@ -481,6 +478,8 @@ mqttReadyPromise.catch(function(){});
     msgInput.value = '';
     cancelReply();
     msgInput.focus();
+    // بعد از ارسال هم خودم رو "دیده" علامت بزن که اگه طرف مقابل اومد، تیک‌ها آبی بشه
+    publishSeen(true);
   }
   $('sendBtn').onclick = send;
   msgInput.addEventListener('keydown', e => {
@@ -496,23 +495,38 @@ mqttReadyPromise.catch(function(){});
     if (!client || !client.connected) return;
     client.publish(TOPIC_DELETED, JSON.stringify({ ids: [...deletedIds] }), { qos: 1, retain: true });
   }
+  // پابلیش "دیده شد" — چک نمی‌کنه صفحه فعاله یا نه
   function publishSeen(force){
     const now = Date.now();
-    if (!force && now - lastSeenPublish < 1500) return;
+    if (!force && now - lastSeenPublish < 800) return;
     lastSeenPublish = now;
     if (!client || !client.connected) return;
-    client.publish(TOPIC_SEEN_MINE, JSON.stringify({ t: now }), { qos: 1, retain: true });
+    try {
+      client.publish(TOPIC_SEEN_MINE, JSON.stringify({ t: now }), { qos: 1, retain: true });
+    } catch(e){}
   }
 
-  async function connectMQTT(){
-    try { await mqttReadyPromise; }
-    catch(e) { setTimeout(connectMQTT, 2000); return; }
+  function startSeenHeartbeat(){
+    if (seenHeartbeat) clearInterval(seenHeartbeat);
+    // هر ۴ ثانیه، تا وقتی صفحه بازه، "دیده" رو پابلیش کن
+    seenHeartbeat = setInterval(() => {
+      if (myName && client && client.connected) {
+        publishSeen(true);
+      }
+    }, 4000);
+  }
+
+  function connectMQTT(){
+    if (typeof mqtt === 'undefined') {
+      setTimeout(connectMQTT, 500);
+      return;
+    }
 
     client = mqtt.connect(BROKER, {
       clientId: 'chat_' + Math.random().toString(16).slice(2, 12),
       clean: true,
-      reconnectPeriod: 2000,
-      connectTimeout: 8000,
+      reconnectPeriod: 1500,
+      connectTimeout: 6000,
       keepalive: 30
     });
 
@@ -521,8 +535,11 @@ mqttReadyPromise.catch(function(){});
       client.subscribe(TOPIC_THEIRS, { qos: 1 });
       client.subscribe(TOPIC_DELETED, { qos: 1 });
       client.subscribe(TOPIC_SEEN_THEIRS, { qos: 1 });
-      // وقتی وصل شد، خودم رو "دیده" علامت بزن
-      setTimeout(() => publishSeen(true), 400);
+      // بلافاصله بعد از اتصال، خودم رو "دیده" علامت بزن
+      publishSeen(true);
+      // یه بار دیگه بعد ۵۰۰ms که مطمئن بشیم subscribe کار میکنه
+      setTimeout(() => publishSeen(true), 500);
+      startSeenHeartbeat();
     });
 
     client.on('error', e => console.error('MQTT error', e));
@@ -541,11 +558,16 @@ mqttReadyPromise.catch(function(){});
 
       if (topic === TOPIC_THEIRS) {
         const serverMsgs = data.messages || [];
-        const hadCount = theirMessages.length;
+        const prevCount = theirMessages.length;
         theirMessages = mergeById(serverMsgs, theirMessages);
         saveQuick();
         renderAll();
-        if (theirMessages.length > hadCount) publishSeen();
+        // هر وقت پیام جدید از طرف مقابل اومد، فوری "دیده" علامت بزن
+        if (theirMessages.length > prevCount) {
+          publishSeen(true);
+        } else {
+          publishSeen();
+        }
         return;
       }
 
@@ -590,18 +612,18 @@ mqttReadyPromise.catch(function(){});
     localStorage.setItem('chat_user', user);
     localStorage.setItem('chat_code', code);
 
-    // ⚡ اول از کش سریع لود کن و فوری نشون بده
+    // ⚡ 1) کش رو فوری لود کن و نشون بده (۰ms)
     loadQuick();
     messagesById = {};
     messagesEl.innerHTML = '';
     renderAll();
     scrollBottom(false);
 
-    // ⚡ بعد برو سراغ chat (نمایش فوری)
+    // ⚡ 2) صفحه چت رو نشون بده
     loginEl.classList.add('hidden');
     chatEl.classList.remove('hidden');
 
-    // ⚡ hash اتاق رو بگیر (از کش، فوری)
+    // ⚡ 3) hash رو از کش بگیر (فوری) و topicها رو بساز
     ROOM_HASH = await getRoomHash();
     TOPIC_MINE        = 'pc/' + ROOM_HASH + '/H/' + myName;
     TOPIC_THEIRS      = 'pc/' + ROOM_HASH + '/H/' + otherName;
@@ -609,15 +631,16 @@ mqttReadyPromise.catch(function(){});
     TOPIC_SEEN_MINE   = 'pc/' + ROOM_HASH + '/S/' + myName;
     TOPIC_SEEN_THEIRS = 'pc/' + ROOM_HASH + '/S/' + otherName;
 
-    // اتصال MQTT در پس‌زمینه
+    // ⚡ 4) MQTT وصل شو
     connectMQTT();
 
-    setTimeout(() => msgInput.focus(), 200);
+    setTimeout(() => msgInput.focus(), 150);
   }
 
   // ── خروج ──
   function logout(){
     if (myName) saveQuick();
+    if (seenHeartbeat) { clearInterval(seenHeartbeat); seenHeartbeat = null; }
     if (client) { try { client.end(true); } catch(e){} client = null; }
     localStorage.removeItem('chat_user');
     localStorage.removeItem('chat_code');
@@ -656,17 +679,21 @@ mqttReadyPromise.catch(function(){});
     if (e.key === 'Enter') { e.preventDefault(); $('enterBtn').click(); }
   });
 
-  // وقتی برگشت به تب → «دیده» علامت بزن
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && myName && client && client.connected) {
-      publishSeen(true);
-    }
+  // تعامل کاربر → «دیده» علامت بزن
+  ['touchstart','mousedown','keydown','scroll'].forEach(ev => {
+    messagesEl.addEventListener(ev, () => { if (myName) publishSeen(); }, { passive: true });
+    document.addEventListener(ev, () => { if (myName && !document.hidden) publishSeen(); }, { passive: true });
   });
 
-  // ذخیره دوره‌ای کش
-  setInterval(() => { if (myName) saveQuick(); }, 20000);
+  // تغییر تب → «دیده» علامت بزن
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && myName) publishSeen(true);
+  });
+
+  // وقتی صفحه بسته شد → ذخیره
   window.addEventListener('pagehide', () => { if (myName) saveQuick(); });
   window.addEventListener('beforeunload', () => { if (myName) saveQuick(); });
+  setInterval(() => { if (myName) saveQuick(); }, 20000);
 
   // ورود خودکار
   const savedUser = localStorage.getItem('chat_user');
