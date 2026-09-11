@@ -181,7 +181,7 @@
 <div id="login">
   <h1>چت</h1>
   <p>کدتو بنویس</p>
-  <input id="codeInput" type="password" placeholder="کد ورود" autocomplete="off">
+  <input id="codeInput" type="password" placeholder="کد ورود " autocomplete="off">
   <button id="enterBtn">ورود</button>
   <div id="loginError"></div>
 </div>
@@ -661,8 +661,8 @@
       '<span>'+fmtTime(m.time)+'</span>'+
       '<button class="act reply" title="پاسخ">↩</button>'+
       (mine?'<button class="act edit" title="ویرایش">✎</button>':'')+
-      '<button class="act react-open" title="ریاکشن">😊</button>'+
-      '<button class="act del" title="حذف">🗑</button>'+
+      '<button class="act react-open" title="ریاکشن">🗿</button>'+
+      (mine?'<button class="act del" title="حذف">🗑</button>':'')+
       tickHtml+
       '</div>';
 
@@ -670,7 +670,7 @@
 
     el.querySelector('.reply').onclick=e=>{e.stopPropagation();setReply(m);};
     if(mine)el.querySelector('.edit').onclick=e=>{e.stopPropagation();startEdit(m);};
-    el.querySelector('.del').onclick=e=>{e.stopPropagation();startDelete(m.id);};
+    if(mine)el.querySelector('.del').onclick=e=>{e.stopPropagation();startDelete(m.id);};
     el.querySelector('.react-open').onclick=e=>{e.stopPropagation();showReactionPicker(m);};
     el.querySelectorAll('.reactions .rx').forEach(rxEl=>{
       rxEl.onclick=e=>{e.stopPropagation();toggleReaction(m.id,rxEl.dataset.emoji);};
@@ -1074,7 +1074,13 @@
     textEl.querySelector('.save').onclick=(e)=>{e.stopPropagation();finish(ta.value);};
   }
 
-  function startDelete(id){pendingDeleteId=id;deleteModal.classList.remove('hidden');}
+  function startDelete(id){
+    const m = myMessages.find(x=>x.id===id);
+    // ⚡ فقط پیام‌های خودت قابل حذف هستن
+    if(!m) return;
+    pendingDeleteId=id;
+    deleteModal.classList.remove('hidden');
+  }
   deleteModal.querySelectorAll('button[data-scope]').forEach(b=>{
     b.onclick=()=>{
       if(!pendingDeleteId)return;
@@ -1082,7 +1088,6 @@
       if(b.dataset.scope==='all'){
         deletedIds.add(id); publishDeleted();
         if(client&&client.connected){
-          // ⚡ فقط به تعداد واقعی chunk‌های این پیام
           const targetMsg = myMessages.find(m=>m.id===id) || theirMessages.find(m=>m.id===id);
           let chunkCount = 0;
           if(targetMsg && targetMsg.media && targetMsg.media.chunks) chunkCount = targetMsg.media.chunks;
@@ -1614,9 +1619,7 @@
           if(!deletedIds.has(id)){
             deletedIds.add(id);
             changed=true;
-            // ⚡ فوری از DOM حذف کن — بدون انتظار برای renderAll
             removeMessage(id);
-            // از آرایه‌های اصلی هم فوری حذف کن
             myMessages = myMessages.filter(m=>m.id!==id);
             theirMessages = theirMessages.filter(m=>m.id!==id);
           }
@@ -1764,4 +1767,4 @@
 })();
 </script>
 </body>
-    </html>
+  </html>
