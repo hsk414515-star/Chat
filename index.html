@@ -300,8 +300,8 @@
   const AVATAR_QUALITY = 0.75;
   const WALL_MAX_DIM = 1280;
   const WALL_QUALITY = 0.5;
-  const CHUNK_SIZE = 120 * 1024;
-  const CHUNK_DELAY = 40;
+  const CHUNK_SIZE = 400 * 1024;
+  const CHUNK_DELAY = 150;
   const MAX_VOICE_SEC = 120;
   const MEDIA_KEEP = 30;
 
@@ -357,27 +357,14 @@
   let currentTheme = 'black';
   let pendingChunks = {}, receivingState = {};
   let peerTypingTimeout = null, lastTypingSignal = 0;
-
   let remoteReactions = {};
 
   let mediaRecorder = null, audioStream = null, audioChunks = [];
   let isRecording = false, recTimerInterval = null, recStartTime = 0, recCanceled = false;
 
-  let mediaObserver = null;
-  if (typeof IntersectionObserver !== 'undefined') {
-    mediaObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const el = entry.target;
-          const msgId = el.dataset.id;
-          const m = myMessages.find(x => x.id === msgId) || theirMessages.find(x => x.id === msgId);
-          if (m && m.media && m.media.chunks && !m.media.data && !pendingChunks[msgId]) {
-            startReceiving(m);
-          }
-          mediaObserver.unobserve(el);
-        }
-      });
-    }, { rootMargin: '400px' });
+  function ensureChunkSubscription(msgId){
+    if(!client || !client.connected || !CHUNK_BASE) return;
+    try { client.subscribe(CHUNK_BASE + '/' + msgId + '/#', {qos:1}); } catch(e){}
   }
 
   const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -710,8 +697,8 @@
     attachLongPress(el,m);
     el.addEventListener('contextmenu',e=>e.preventDefault());
 
-    if (mediaObserver && m.media && m.media.chunks && !m.media.data && !pendingChunks[m.id]) {
-      mediaObserver.observe(el);
+    if (m.media && m.media.chunks && !m.media.data && !pendingChunks[m.id]) {
+      startReceiving(m);
     }
 
     return el;
@@ -991,8 +978,14 @@
     if(pendingChunks[m.id])return;
     pendingChunks[m.id]={chunks:{},total:m.media.chunks,type:m.media.type||'image'};
     receivingState[m.id]={received:0,total:m.media.chunks};
-    if(client&&client.connected)client.subscribe(CHUNK_BASE+'/'+m.id+'/#',{qos:1});
+    ensureChunkSubscription(m.id);
     updateProgressUI(m.id);
+    setTimeout(()=>{
+      const pc=pendingChunks[m.id];
+      if(pc && receivingState[m.id] && receivingState[m.id].received === 0){
+        ensureChunkSubscription(m.id);
+      }
+    }, 3000);
   }
 
   function handleChunkMessage(topic, payload){
@@ -1089,7 +1082,14 @@
       if(b.dataset.scope==='all'){
         deletedIds.add(id); publishDeleted();
         if(client&&client.connected){
-          for(let i=0;i<300;i++)client.publish(CHUNK_BASE+'/'+id+'/'+i,'',{qos:1,retain:true});
+          // ⚡ فقط به تعداد واقعی chunk‌های این پیام
+          const targetMsg = myMessages.find(m=>m.id===id) || theirMessages.find(m=>m.id===id);
+          let chunkCount = 0;
+          if(targetMsg && targetMsg.media && targetMsg.media.chunks) chunkCount = targetMsg.media.chunks;
+          const toDelete = Math.max(chunkCount, 1) + 3;
+          for(let i=0;i<toDelete;i++){
+            client.publish(CHUNK_BASE+'/'+id+'/'+i,'',{qos:1,retain:true});
+          }
           client.publish(REACTION_BASE+'/'+id,'',{qos:1,retain:true});
         }
         delete remoteReactions[id];
@@ -1128,34 +1128,43 @@
 
   function compressImage(file, maxDim, quality){
     return new Promise((resolve) => {
-      const reader=new FileReader();
-      reader.onload=(e)=>{
-        const rawDataUrl=e.target.result;
-        if(file.type === 'image/svg+xml'){resolve(rawDataUrl);return;}
-        const img=new Image();
-        img.onload=()=>{
+      if(!file){resolve(null);return;}
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const rawDataUrl = e.target.result;
+        if(!rawDataUrl){resolve(null);return;}
+        if(file.type === 'image/svg+xml' || /\.svg$/i.test(file.name||'')){
+          resolve(rawDataUrl); return;
+        }
+        if(file.type === 'image/gif' || /\.gif$/i.test(file.name||'')){
+          resolve(rawDataUrl); return;
+        }
+        const img = new Image();
+        img.onload = () => {
           try{
-            let w=img.width, h=img.height;
-            if(!w||!h){resolve(rawDataUrl);return;}
-            if(w>maxDim||h>maxDim){
-              if(w>h){h=Math.round(h*maxDim/w);w=maxDim;}
-              else{w=Math.round(w*maxDim/h);h=maxDim;}
+            let w = img.width, h = img.height;
+            if(!w || !h){ resolve(rawDataUrl); return; }
+            if(w > maxDim || h > maxDim){
+              if(w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
+              else { w = Math.round(w * maxDim / h); h = maxDim; }
             }
-            const canvas=document.createElement('canvas');
-            canvas.width=w; canvas.height=h;
-            const ctx=canvas.getContext('2d');
-            ctx.fillStyle='#ffffff';
-            ctx.fillRect(0,0,w,h);
-            ctx.drawImage(img,0,0,w,h);
-            const out=canvas.toDataURL('image/jpeg', quality);
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            const out = canvas.toDataURL('image/jpeg', quality);
             if(out && out.length > 100) resolve(out);
             else resolve(rawDataUrl);
-          }catch(err){ resolve(rawDataUrl); }
+          }catch(err){
+            resolve(rawDataUrl);
+          }
         };
-        img.onerror=()=>resolve(rawDataUrl);
-        img.src=rawDataUrl;
+        img.onerror = () => resolve(rawDataUrl);
+        img.src = rawDataUrl;
       };
-      reader.onerror=()=>resolve(null);
+      reader.onerror = () => resolve(null);
       reader.readAsDataURL(file);
     });
   }
@@ -1174,40 +1183,69 @@
     client.publish(TOPIC_MINE,JSON.stringify({messages:stripForPublish(myMessages)}),{qos:1,retain:true});
   }
 
+  function publishOneChunk(topic, payload){
+    return new Promise((resolve) => {
+      if(!client || !client.connected){ resolve(false); return; }
+      let settled = false;
+      const done = (ok) => { if(settled) return; settled = true; resolve(ok); };
+      const timeout = setTimeout(() => done(false), 8000);
+      try {
+        client.publish(topic, payload, { qos: 1, retain: true }, (err) => {
+          clearTimeout(timeout);
+          done(!err);
+        });
+      } catch(e) {
+        clearTimeout(timeout);
+        done(false);
+      }
+    });
+  }
+
   async function sendMediaData(dataUrl, mediaType, extraText, extraReply, durationHint){
     if(!dataUrl){alert('خطا: داده خالی');return;}
-    const chunks=chunkString(dataUrl,CHUNK_SIZE);
-    const msgId=uid();
-    const captureText=extraText!==undefined?extraText:msgInput.value.trim();
-    const captureReply=extraReply!==undefined?extraReply:(replyingTo?{
-      id:replyingTo.id,
-      sender:replyingTo.sender,text:replyingTo.text,hasImage:replyingTo.hasImage,hasAudio:replyingTo.hasAudio
-    }:null);
+    const chunks = chunkString(dataUrl, CHUNK_SIZE);
+    const msgId = uid();
+    const captureText = extraText!==undefined ? extraText : msgInput.value.trim();
+    const captureReply = extraReply!==undefined ? extraReply : (replyingTo ? {
+      id: replyingTo.id,
+      sender: replyingTo.sender,
+      text: replyingTo.text,
+      hasImage: replyingTo.hasImage,
+      hasAudio: replyingTo.hasAudio
+    } : null);
 
-    const localMsg={
-      id:msgId,sender:myName,text:captureText,time:Date.now(),edited:false,
-      media:{chunks:chunks.length,data:dataUrl,type:mediaType}
+    const localMsg = {
+      id: msgId, sender: myName, text: captureText, time: Date.now(), edited: false,
+      media: { chunks: chunks.length, data: dataUrl, type: mediaType }
     };
-    if(durationHint)localMsg.media.duration=durationHint;
-    if(captureReply)localMsg.replyPreview=captureReply;
+    if(durationHint) localMsg.media.duration = durationHint;
+    if(captureReply) localMsg.replyPreview = captureReply;
 
     myMessages.push(localMsg);
     publishMyHistory(); saveQuick(); renderAll(); scrollBottom(true);
 
     uploadIndicator.classList.remove('hidden');
-    uploadText.textContent=mediaType==='audio'?'در حال ارسال صدا ۰٪':'در حال ارسال ۰٪';
+    uploadText.textContent = mediaType==='audio' ? 'در حال ارسال صدا ۰٪' : 'در حال ارسال ۰٪';
     try{
-      const baseTopic=CHUNK_BASE+'/'+msgId;
-      for(let i=0;i<chunks.length;i++){
-        await new Promise(resolve=>{
-          client.publish(baseTopic+'/'+i,chunks[i],{qos:1,retain:true},resolve);
-        });
-        const pct=Math.round((i+1)/chunks.length*100);
-        uploadText.textContent=(mediaType==='audio'?'در حال ارسال صدا ':'در حال ارسال ')+pct+'٪ ('+(i+1)+'/'+chunks.length+')';
-        if(i<chunks.length-1)await delay(CHUNK_DELAY);
+      const baseTopic = CHUNK_BASE + '/' + msgId;
+      for(let i = 0; i < chunks.length; i++){
+        let ok = await publishOneChunk(baseTopic + '/' + i, chunks[i]);
+        if(!ok){
+          await delay(1500);
+          ok = await publishOneChunk(baseTopic + '/' + i, chunks[i]);
+        }
+        if(!ok){
+          await delay(2000);
+          await publishOneChunk(baseTopic + '/' + i, chunks[i]);
+        }
+        const pct = Math.round((i+1) / chunks.length * 100);
+        uploadText.textContent = (mediaType==='audio' ? 'در حال ارسال صدا ' : 'در حال ارسال ') + pct + '٪ (' + (i+1) + '/' + chunks.length + ')';
+        if(i < chunks.length-1) await delay(CHUNK_DELAY);
       }
-      msgInput.value=''; cancelReply(); hideEmojiPanel();
-    }finally{
+      msgInput.value = '';
+      cancelReply();
+      hideEmojiPanel();
+    } finally {
       uploadIndicator.classList.add('hidden');
     }
   }
@@ -1215,63 +1253,73 @@
   async function sendImage(file){
     try{
       uploadIndicator.classList.remove('hidden');
-      uploadText.textContent='در حال فشرده‌سازی…';
-      const dataUrl=await compressImage(file,IMG_MAX_DIM,IMG_QUALITY);
+      uploadText.textContent = 'در حال آماده‌سازی…';
+      const dataUrl = await compressImage(file, IMG_MAX_DIM, IMG_QUALITY);
       uploadIndicator.classList.add('hidden');
-      if(!dataUrl){alert('خطا در خواندن عکس');return;}
-      await sendMediaData(dataUrl,'image');
-    }catch(err){
+      if(!dataUrl){ alert('خطا در خواندن عکس'); return; }
+      await sendMediaData(dataUrl, 'image');
+    } catch(err) {
       uploadIndicator.classList.add('hidden');
-      alert('خطا: '+(err.message||'نامشخص'));
+      alert('خطا: ' + (err.message || 'نامشخص'));
     }
   }
 
   attachBtn.onclick=()=>fileInput.click();
-  fileInput.onchange=e=>{
-    const file=e.target.files&&e.target.files[0];
-    fileInput.value='';
-    if(!file)return;
-    if(!file.type.startsWith('image/')){alert('فقط عکس');return;}
-    if(file.size>MAX_FILE_SIZE){alert('حجم عکس زیاده.\nحداکثر '+Math.round(MAX_FILE_SIZE/1024/1024)+' مگابایت');return;}
-    sendImage(file);
+
+  fileInput.onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) { fileInput.value=''; return; }
+    const looksLikeImage = (file.type||'').startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|heic|heif|svg|bmp)$/i.test(file.name||'');
+    if (!looksLikeImage) {
+      alert('فقط عکس');
+      fileInput.value='';
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      alert('حجم عکس زیاده.\nحداکثر ' + Math.round(MAX_FILE_SIZE/1024/1024) + ' مگابایت');
+      fileInput.value='';
+      return;
+    }
+    await sendImage(file);
+    fileInput.value = '';
   };
 
-  avatarInput.onchange=async e=>{
-    const file=e.target.files&&e.target.files[0];
-    avatarInput.value='';
-    if(!file)return;
-    if(!file.type.startsWith('image/')){alert('فقط عکس');return;}
+  avatarInput.onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) { avatarInput.value=''; return; }
+    if (!file.type.startsWith('image/')) { alert('فقط عکس'); avatarInput.value=''; return; }
     try{
       uploadIndicator.classList.remove('hidden');
-      uploadText.textContent='در حال آماده‌سازی…';
-      const dataUrl=await compressImage(file,AVATAR_SIZE,AVATAR_QUALITY);
+      uploadText.textContent = 'در حال آماده‌سازی…';
+      const dataUrl = await compressImage(file, AVATAR_SIZE, AVATAR_QUALITY);
       uploadIndicator.classList.add('hidden');
-      if(!dataUrl){alert('خطا در خواندن عکس');return;}
+      if(!dataUrl){ alert('خطا در خواندن عکس'); avatarInput.value=''; return; }
       applyMyAvatar(dataUrl);
       saveMyAvatar(dataUrl);
     }catch(err){
       uploadIndicator.classList.add('hidden');
       alert('خطا: '+(err.message||''));
     }
+    avatarInput.value = '';
   };
 
-  wallpaperInput.onchange=async e=>{
-    const file=e.target.files&&e.target.files[0];
-    wallpaperInput.value='';
-    if(!file)return;
-    if(!file.type.startsWith('image/')){alert('فقط عکس');return;}
+  wallpaperInput.onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) { wallpaperInput.value=''; return; }
+    if (!file.type.startsWith('image/')) { alert('فقط عکس'); wallpaperInput.value=''; return; }
     try{
       uploadIndicator.classList.remove('hidden');
-      uploadText.textContent='در حال آماده‌سازی والپیپر…';
-      const dataUrl=await compressImage(file,WALL_MAX_DIM,WALL_QUALITY);
+      uploadText.textContent = 'در حال آماده‌سازی والپیپر…';
+      const dataUrl = await compressImage(file, WALL_MAX_DIM, WALL_QUALITY);
       uploadIndicator.classList.add('hidden');
-      if(!dataUrl){alert('خطا در خواندن عکس');return;}
+      if(!dataUrl){ alert('خطا در خواندن عکس'); wallpaperInput.value=''; return; }
       applyWallpaper(dataUrl);
       saveWallpaper(dataUrl);
     }catch(err){
       uploadIndicator.classList.add('hidden');
       alert('خطا: '+(err.message||''));
     }
+    wallpaperInput.value = '';
   };
 
   function showGuideModal(){
@@ -1363,20 +1411,18 @@
 
   voiceBtn.onclick = async () => {
     if (isRecording) { stopRecording(false); return; }
-
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert('مرورگرت از ضبط صدا پشتیبانی نمی‌کنه.\nلطفاً از Chrome یا Safari جدید استفاده کن.');
+      alert('مرورگرت از ضبط صدا پشتیبانی نمی‌کنه.');
       return;
     }
     if (typeof MediaRecorder === 'undefined') {
-      alert('مرورگرت MediaRecorder رو پشتیبانی نمی‌کنه.\nلطفاً مرورگرت رو آپدیت کن.');
+      alert('مرورگرت MediaRecorder رو پشتیبانی نمی‌کنه.');
       return;
     }
     if (!window.isSecureContext) {
       alert('این صفحه باید با HTTPS باز بشه تا میکروفون کار کنه.');
       return;
     }
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
@@ -1385,17 +1431,10 @@
     } catch (err) {
       console.error('getUserMedia error:', err);
       const name = err.name || '';
-      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        showGuideModal();
-      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        alert('میکروفونی روی این دستگاه پیدا نشد.');
-      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
-        alert('میکروفون توسط برنامه‌ی دیگه‌ای در حال استفاده‌ست.\nاون برنامه رو ببند و دوباره امتحان کن.');
-      } else if (name === 'SecurityError') {
-        alert('به دلایل امنیتی مسدود شده.\nآدرس سایت باید HTTPS باشه.');
-      } else {
-        alert('خطا در دسترسی به میکروفون:\n' + name + '\n' + (err.message || ''));
-      }
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') showGuideModal();
+      else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') alert('میکروفونی پیدا نشد.');
+      else if (name === 'NotReadableError' || name === 'TrackStartError') alert('میکروفون در استفاده‌ست.');
+      else alert('خطا: ' + name);
     }
   };
 
@@ -1408,10 +1447,9 @@
     }
   };
 
-  // ⚡ QoS 0 برای سرعت حذف
   function publishDeleted(){
     if(!client||!client.connected)return;
-    client.publish(TOPIC_DELETED,JSON.stringify({ids:[...deletedIds]}),{qos:0,retain:true});
+    client.publish(TOPIC_DELETED,JSON.stringify({ids:[...deletedIds]}),{qos:1,retain:true});
   }
   function publishSeen(force){
     const now=Date.now();
@@ -1438,7 +1476,7 @@
     client.on('connect',()=>{
       client.subscribe(TOPIC_MINE,{qos:1});
       client.subscribe(TOPIC_THEIRS,{qos:1});
-      client.subscribe(TOPIC_DELETED,{qos:0});
+      client.subscribe(TOPIC_DELETED,{qos:1});
       client.subscribe(TOPIC_SEEN_THEIRS,{qos:1});
       client.subscribe(REACTION_BASE+'/#',{qos:1});
       client.subscribe(TOPIC_THEME_MINE,{qos:1});
@@ -1446,12 +1484,18 @@
       client.subscribe(TOPIC_AVATAR_MINE,{qos:1});
       client.subscribe(TOPIC_AVATAR_THEIRS,{qos:1});
       client.subscribe(TOPIC_WALL_MINE,{qos:1});
-      for(const msgId in pendingChunks)client.subscribe(CHUNK_BASE+'/'+msgId+'/#',{qos:1});
+      for(const msgId in pendingChunks) ensureChunkSubscription(msgId);
       publishSeen(true);
       setTimeout(()=>publishSeen(true),500);
       startSeenHeartbeat();
     });
     client.on('error',e=>console.error('MQTT error',e));
+    client.on('reconnect',()=>{
+      setTimeout(()=>{
+        if(!client||!client.connected)return;
+        for(const msgId in pendingChunks) ensureChunkSubscription(msgId);
+      }, 1000);
+    });
     client.on('message',(topic,payload)=>{
       if(CHUNK_BASE&&topic.startsWith(CHUNK_BASE+'/')){handleChunkMessage(topic,payload);return;}
 
@@ -1551,6 +1595,9 @@
               updateMessageText(m.id,m.text,m.edited);
             }
           }
+          if(m.media && m.media.chunks && !m.media.data && !pendingChunks[m.id]){
+            startReceiving(m);
+          }
         });
         saveQuick(); renderAll();
         if(theirMessages.length>prevCount){
@@ -1560,11 +1607,20 @@
         }else publishSeen();
         return;
       }
-      // ⚡ حذف سریع: ذخیره سبک
       if(topic===TOPIC_DELETED){
         const arr=data.ids||[];
         let changed=false;
-        arr.forEach(id=>{if(!deletedIds.has(id)){deletedIds.add(id);changed=true;}});
+        arr.forEach(id=>{
+          if(!deletedIds.has(id)){
+            deletedIds.add(id);
+            changed=true;
+            // ⚡ فوری از DOM حذف کن — بدون انتظار برای renderAll
+            removeMessage(id);
+            // از آرایه‌های اصلی هم فوری حذف کن
+            myMessages = myMessages.filter(m=>m.id!==id);
+            theirMessages = theirMessages.filter(m=>m.id!==id);
+          }
+        });
         if(changed){
           try{
             const raw=localStorage.getItem(quickKey(myName));
@@ -1708,4 +1764,4 @@
 })();
 </script>
 </body>
-  </html>
+    </html>
