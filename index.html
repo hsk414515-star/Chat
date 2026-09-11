@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0f1720">
 <link rel="preconnect" href="https://broker.emqx.io" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<title>چت </title>
+<title>چت</title>
 <style>
   :root{--bg:#0f1720;--bg-2:#16202b;--header-bg:#16202b;--composer-bg:#16202b;--border:#2a3644;--accent:#4a90e2;--accent-2:#3a7ac2;--text:#e6edf3;--text-mute:#8b98a5;--input-bg:#0f1720;--panel-bg:#16202b}
   body[data-theme="barca"]{--bg:linear-gradient(180deg,#050a1f 0%,#150318 100%);--header-bg:linear-gradient(135deg,#004D98 0%,#A50044 100%);--composer-bg:#0a0f22;--border:rgba(165,0,68,.4);--accent:#A50044;--accent-2:#8a0038;--input-bg:rgba(255,255,255,.06);--panel-bg:#0d1225;--text:#fff;--text-mute:#d0b8c5}
@@ -440,7 +440,7 @@
   }
   async function getRoomHash(){
     const codesId=CODES.Hatami+'|'+CODES.Armin;
-    const key='rh_v16_'+simpleHash(codesId);
+    const key='rh_v15_'+simpleHash(codesId);
     let h=localStorage.getItem(key);
     if(h)return h;
     const sorted=[CODES.Hatami,CODES.Armin].sort().join('|');
@@ -466,7 +466,7 @@
     }
     return result;
   }
-  const quickKey = user => 'chat_q16_' + user;
+  const quickKey = user => 'chat_q15_' + user;
   function loadQuick(){
     try{
       const raw=localStorage.getItem(quickKey(myName));
@@ -1408,7 +1408,7 @@
     }
   };
 
-  // ⚡ QoS 0 → ارسال فوری حذف
+  // ⚡ QoS 0 برای سرعت حذف
   function publishDeleted(){
     if(!client||!client.connected)return;
     client.publish(TOPIC_DELETED,JSON.stringify({ids:[...deletedIds]}),{qos:0,retain:true});
@@ -1438,7 +1438,6 @@
     client.on('connect',()=>{
       client.subscribe(TOPIC_MINE,{qos:1});
       client.subscribe(TOPIC_THEIRS,{qos:1});
-      // ⚡ QoS 0 برای حذف → دریافت فوری
       client.subscribe(TOPIC_DELETED,{qos:0});
       client.subscribe(TOPIC_SEEN_THEIRS,{qos:1});
       client.subscribe(REACTION_BASE+'/#',{qos:1});
@@ -1561,13 +1560,12 @@
         }else publishSeen();
         return;
       }
-      // ⚡ حذف: ذخیره سبک (بدون مدیا) تا فوری پاک بشه
+      // ⚡ حذف سریع: ذخیره سبک
       if(topic===TOPIC_DELETED){
         const arr=data.ids||[];
         let changed=false;
         arr.forEach(id=>{if(!deletedIds.has(id)){deletedIds.add(id);changed=true;}});
         if(changed){
-          // ذخیره سبک: فقط deletedIds رو آپدیت کن، کل saveQuick رو صدا نزن
           try{
             const raw=localStorage.getItem(quickKey(myName));
             if(raw){
