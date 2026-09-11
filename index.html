@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0f1720">
 <link rel="preconnect" href="https://broker.emqx.io" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<title>چتی</title>
+<title>چت </title>
 <style>
   :root{--bg:#0f1720;--bg-2:#16202b;--header-bg:#16202b;--composer-bg:#16202b;--border:#2a3644;--accent:#4a90e2;--accent-2:#3a7ac2;--text:#e6edf3;--text-mute:#8b98a5;--input-bg:#0f1720;--panel-bg:#16202b}
   body[data-theme="barca"]{--bg:linear-gradient(180deg,#050a1f 0%,#150318 100%);--header-bg:linear-gradient(135deg,#004D98 0%,#A50044 100%);--composer-bg:#0a0f22;--border:rgba(165,0,68,.4);--accent:#A50044;--accent-2:#8a0038;--input-bg:rgba(255,255,255,.06);--panel-bg:#0d1225;--text:#fff;--text-mute:#d0b8c5}
@@ -67,19 +67,14 @@
   body[data-theme="real"] #messages.has-wallpaper::before{background:rgba(255,255,255,.5)}
   #messages > *{position:relative;z-index:1}
   .date-sep{align-self:center;background:rgba(255,255,255,.1);color:var(--text-mute);font-size:11px;padding:4px 12px;border-radius:999px;margin:10px 0 6px;user-select:none}
-  .msg{max-width:82%;padding:8px 12px 6px;border-radius:16px;font-size:15px;line-height:1.45;word-wrap:break-word;animation:fade .18s ease-out;position:relative;--overlay-bg:rgba(0,0,0,.2);--overlay-border:rgba(255,255,255,.5);user-select:none;-webkit-touch-callout:none}
+  .msg{max-width:82%;padding:8px 12px 6px;border-radius:16px;font-size:15px;line-height:1.45;word-wrap:break-word;animation:fade .18s ease-out;position:relative;--overlay-bg:rgba(0,0,0,.2);--overlay-border:rgba(255,255,255,.5);user-select:none;-webkit-touch-callout:none;transition:box-shadow .3s}
   @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
   .msg.mine{align-self:flex-start;border-bottom-right-radius:4px}
   .msg.theirs{align-self:flex-end;border-bottom-left-radius:4px}
   .msg.from-hatami{background:linear-gradient(135deg,#004D98 0%,#4E1550 50%,#A50044 100%);color:#fff;--overlay-bg:rgba(255,255,255,.18);--overlay-border:rgba(255,255,255,.55)}
   .msg.from-armin{background:#fff;color:#1a1a1a;box-shadow:0 0 0 1.5px rgba(201,162,39,.75);--overlay-bg:rgba(0,0,0,.05);--overlay-border:rgba(0,0,0,.3)}
-  /* هایلایت پیام (برای پاسخ) */
-  .msg.flash,
-  .msg.from-armin.flash,
-  .msg.from-hatami.flash{
-    box-shadow:0 0 0 3px #4fc3f7, 0 0 24px rgba(79,195,247,.7) !important;
-    transition:box-shadow .3s;
-  }
+  .msg.highlighted::before{content:'';position:absolute;inset:-4px;border:3px solid #4fc3f7;border-radius:20px;animation:highlight-fade 1.6s ease-out;pointer-events:none;z-index:5}
+  @keyframes highlight-fade{0%{opacity:0;transform:scale(.95)}20%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.05)}}
   .msg .text{white-space:pre-wrap;word-break:break-word}
   .msg .edited{font-size:10px;opacity:.7;margin-right:4px}
   .msg .meta{font-size:10px;opacity:.75;margin-top:4px;display:flex;gap:5px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
@@ -142,24 +137,13 @@
   #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.94);display:flex;align-items:center;justify-content:center;z-index:200;padding:12px}
   #lightbox img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
   #lightbox .close{position:absolute;top:16px;left:16px;background:rgba(255,255,255,.15);border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-  .reply-preview{background:var(--overlay-bg);border-right:3px solid var(--overlay-border);padding:4px 8px;border-radius:6px;font-size:12px;opacity:.9;margin-bottom:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;transition:opacity .15s}
+  .reply-preview{background:var(--overlay-bg);border-right:3px solid var(--overlay-border);padding:4px 8px;border-radius:6px;font-size:12px;opacity:.9;margin-bottom:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;transition:background .15s}
+  .reply-preview:hover{background:rgba(255,255,255,.25)}
   .reply-preview:active{opacity:.6}
   .reply-preview b{font-weight:600;margin-left:4px}
-  /* کادر ویرایش بزرگ‌تر */
-  .edit-input{
-    width:100%;background:var(--overlay-bg);color:inherit;
-    border:1px solid var(--overlay-border);border-radius:10px;
-    padding:10px 12px;font-size:15px;font-family:inherit;outline:none;
-    resize:vertical;min-height:90px;line-height:1.6;
-    display:block;
-  }
-  .edit-actions{display:flex;gap:8px;margin-top:8px;justify-content:flex-end}
-  .edit-actions button{
-    background:var(--overlay-bg);border:none;color:inherit;
-    padding:8px 18px;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;
-    font-weight:600;
-  }
-  .edit-actions button.cancel{opacity:.7}
+  .edit-input{width:100%;background:var(--overlay-bg);color:inherit;border:1px solid var(--overlay-border);border-radius:8px;padding:8px 10px;font-size:15px;font-family:inherit;outline:none;resize:none;min-height:90px;max-height:240px;line-height:1.5}
+  .edit-actions{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}
+  .edit-actions button{background:var(--overlay-bg);border:none;color:inherit;padding:6px 16px;border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600}
   .edit-actions button.save{background:#2ecc71;color:#fff}
   #replyBanner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--panel-bg);border-top:1px solid var(--border);font-size:13px;flex-shrink:0}
   #replyBanner .bar{width:3px;height:26px;background:var(--accent);border-radius:2px;flex-shrink:0}
@@ -197,7 +181,7 @@
 <div id="login">
   <h1>چت</h1>
   <p>کدتو بنویس</p>
-  <input id="codeInput" type="password" placeholder="کد رو بزن"autocomplete="off">
+  <input id="codeInput" type="password" placeholder="کد ورود" autocomplete="off">
   <button id="enterBtn">ورود</button>
   <div id="loginError"></div>
 </div>
@@ -359,12 +343,11 @@
   const micGuideText = $('micGuideText');
   const micGuideOk = $('micGuideOk');
 
-  let client = null, myName = null, otherName = null, ROOM_HASH = null;
+  let client = null, myName = null, ROOM_HASH = null;
   let TOPIC_MINE, TOPIC_THEIRS, TOPIC_DELETED, TOPIC_SEEN_MINE, TOPIC_SEEN_THEIRS;
   let TOPIC_THEME_MINE, TOPIC_TYPING_MINE, TOPIC_TYPING_THEIRS;
   let TOPIC_AVATAR_MINE, TOPIC_AVATAR_THEIRS, TOPIC_WALL_MINE;
-  let TOPIC_REACT_MINE, TOPIC_REACT_THEIRS;
-  let CHUNK_BASE = null;
+  let CHUNK_BASE = null, REACTION_BASE = null;
   let myMessages = [], theirMessages = [];
   let deletedIds = new Set(), hiddenIds = new Set();
   let messagesById = {};
@@ -375,9 +358,7 @@
   let pendingChunks = {}, receivingState = {};
   let peerTypingTimeout = null, lastTypingSignal = 0;
 
-  // ری‌اکشن‌های جدا برای هر نفر
-  let myReactions = {};    // { msgId: [emoji, ...] }
-  let theirReactions = {}; // { msgId: [emoji, ...] }
+  let remoteReactions = {};
 
   let mediaRecorder = null, audioStream = null, audioChunks = [];
   let isRecording = false, recTimerInterval = null, recStartTime = 0, recCanceled = false;
@@ -459,7 +440,7 @@
   }
   async function getRoomHash(){
     const codesId=CODES.Hatami+'|'+CODES.Armin;
-    const key='rh_v15_'+simpleHash(codesId);
+    const key='rh_v16_'+simpleHash(codesId);
     let h=localStorage.getItem(key);
     if(h)return h;
     const sorted=[CODES.Hatami,CODES.Armin].sort().join('|');
@@ -468,7 +449,6 @@
     return h;
   }
 
-  // ── کش پیام‌ها ──
   function stripData(arr){
     const result = arr.map(m => Object.assign({}, m));
     let mediaCount = 0;
@@ -486,7 +466,7 @@
     }
     return result;
   }
-  const quickKey = user => 'chat_q15_' + user;
+  const quickKey = user => 'chat_q16_' + user;
   function loadQuick(){
     try{
       const raw=localStorage.getItem(quickKey(myName));
@@ -495,6 +475,7 @@
       myMessages=p.mine||[]; theirMessages=p.theirs||[];
       deletedIds=new Set(p.deleted||[]); hiddenIds=new Set(p.hidden||[]);
       peerSeenUpTo=p.peerSeen||0;
+      remoteReactions=p.reactions||{};
       return true;
     }catch(e){return false;}
   }
@@ -502,40 +483,18 @@
     try{
       localStorage.setItem(quickKey(myName),JSON.stringify({
         mine:stripData(myMessages),theirs:stripData(theirMessages),
-        deleted:[...deletedIds],hidden:[...hiddenIds],peerSeen:peerSeenUpTo
+        deleted:[...deletedIds],hidden:[...hiddenIds],peerSeen:peerSeenUpTo,
+        reactions:remoteReactions
       }));
     }catch(e){
       try{
         const noMedia=arr=>arr.map(m=>m.media?Object.assign({},m,{media:Object.assign({},m.media,{data:null})}):m);
         localStorage.setItem(quickKey(myName),JSON.stringify({
           mine:noMedia(myMessages),theirs:noMedia(theirMessages),
-          deleted:[...deletedIds],hidden:[...hiddenIds],peerSeen:peerSeenUpTo
+          deleted:[...deletedIds],hidden:[...hiddenIds],peerSeen:peerSeenUpTo,
+          reactions:remoteReactions
         }));
       }catch(e2){}
-    }
-  }
-
-  // ── کش ری‌اکشن‌ها ──
-  function loadReactionState(){
-    try {
-      const m = localStorage.getItem('chat_rx_' + myName);
-      const t = localStorage.getItem('chat_rx_peer_' + myName);
-      myReactions = m ? JSON.parse(m) : {};
-      theirReactions = t ? JSON.parse(t) : {};
-    } catch(e) {
-      myReactions = {};
-      theirReactions = {};
-    }
-  }
-  function saveReactionState(){
-    try {
-      localStorage.setItem('chat_rx_' + myName, JSON.stringify(myReactions));
-      localStorage.setItem('chat_rx_peer_' + myName, JSON.stringify(theirReactions));
-    } catch(e){}
-  }
-  function publishReactionState(){
-    if (client && client.connected && TOPIC_REACT_MINE) {
-      client.publish(TOPIC_REACT_MINE, JSON.stringify({ r: myReactions }), {qos:1, retain:true});
     }
   }
 
@@ -649,36 +608,19 @@
     peerTypingTimeout=setTimeout(()=>{peerTypingTimeout=null;updatePeerStatus();},3500);
   }
 
-  // ── رندر ری‌اکشن‌ها (ترکیب خودم + طرف مقابل) ──
-  function getCombinedReactions(msgId){
-    const mine = myReactions[msgId] || [];
-    const theirs = theirReactions[msgId] || [];
-    const out = {};
-    mine.forEach(e => {
-      if (!out[e]) out[e] = [];
-      out[e].push(myName);
+  function renderReactions(m){
+    const rx=m.reactions||{};
+    const keys=Object.keys(rx).filter(k=>rx[k]&&rx[k].length);
+    if(!keys.length)return '';
+    let html='<div class="reactions">';
+    keys.forEach(emoji=>{
+      const users=rx[emoji];
+      const mine=users.includes(myName);
+      html+='<span class="rx'+(mine?' mine':'')+'" data-emoji="'+emoji+'" data-msgid="'+m.id+'">'+emoji+'<span class="count">'+users.length+'</span></span>';
     });
-    theirs.forEach(e => {
-      if (!out[e]) out[e] = [];
-      out[e].push(otherName);
-    });
-    return out;
-  }
-
-  function renderReactions(msgId){
-    const rx = getCombinedReactions(msgId);
-    const keys = Object.keys(rx).filter(k => rx[k] && rx[k].length);
-    if (!keys.length) return '';
-    let html = '<div class="reactions">';
-    keys.forEach(emoji => {
-      const users = rx[emoji];
-      const mine = users.includes(myName);
-      html += '<span class="rx' + (mine ? ' mine' : '') + '" data-emoji="' + emoji + '" data-msgid="' + msgId + '">' + emoji + '<span class="count">' + users.length + '</span></span>';
-    });
-    html += '</div>';
+    html+='</div>';
     return html;
   }
-
   function renderMediaHtml(m){
     if(!m.media)return '';
     const type=m.media.type||'image';
@@ -714,8 +656,8 @@
       let pText=m.replyPreview.text||'';
       if(!pText&&m.replyPreview.hasImage)pText='📷 عکس';
       if(!pText&&m.replyPreview.hasAudio)pText='🎤 پیام صوتی';
-      const targetId = m.replyPreview.targetId || '';
-      replyHtml='<div class="reply-preview" data-target="'+esc(targetId)+'"><b>'+esc(m.replyPreview.sender)+'</b>'+esc(pText.slice(0,60))+'</div>';
+      const rpId=m.replyPreview.id||'';
+      replyHtml='<div class="reply-preview" data-reply-to="'+esc(rpId)+'"><b>'+esc(m.replyPreview.sender)+'</b>'+esc(pText.slice(0,60))+'</div>';
     }
 
     const mediaHtml=renderMediaHtml(m);
@@ -737,7 +679,7 @@
       tickHtml+
       '</div>';
 
-    el.innerHTML=replyHtml+mediaHtml+textHtml+renderReactions(m.id)+meta;
+    el.innerHTML=replyHtml+mediaHtml+textHtml+renderReactions(m)+meta;
 
     el.querySelector('.reply').onclick=e=>{e.stopPropagation();setReply(m);};
     if(mine)el.querySelector('.edit').onclick=e=>{e.stopPropagation();startEdit(m);};
@@ -747,13 +689,20 @@
       rxEl.onclick=e=>{e.stopPropagation();toggleReaction(m.id,rxEl.dataset.emoji);};
     });
 
-    // کلیک روی پیش‌نمایش پاسخ → برو به پیام اصلی
-    const rpEl = el.querySelector('.reply-preview');
-    if (rpEl) {
-      rpEl.onclick = (e) => {
+    const rpv=el.querySelector('.reply-preview');
+    if(rpv){
+      rpv.onclick=(e)=>{
         e.stopPropagation();
-        const targetId = rpEl.dataset.target;
-        if (targetId) scrollToMessage(targetId);
+        const targetId=rpv.dataset.replyTo;
+        if(!targetId)return;
+        const target=messagesById[targetId];
+        if(target&&target.el){
+          target.el.scrollIntoView({behavior:'smooth',block:'center'});
+          target.el.classList.remove('highlighted');
+          void target.el.offsetWidth;
+          target.el.classList.add('highlighted');
+          setTimeout(()=>{if(target.el)target.el.classList.remove('highlighted');},1700);
+        }
       };
     }
 
@@ -768,23 +717,13 @@
     return el;
   }
 
-  function scrollToMessage(id){
-    const rec = messagesById[id];
-    if (!rec) return;
-    rec.el.scrollIntoView({behavior:'smooth', block:'center'});
-    rec.el.classList.add('flash');
-    setTimeout(() => rec.el.classList.remove('flash'), 1600);
-  }
-
   function attachLongPress(el, m){
     let timer=null;
     const start=(e)=>{
-      // اگه در حال ویرایشیم، long-press رو غیرفعال کن
-      if (editingId) return;
       if(e.target.closest('.act')||e.target.closest('.reactions .rx')||
          e.target.closest('.media img')||e.target.closest('audio')||
-         e.target.closest('.edit-input')||e.target.closest('.edit-actions')||
-         e.target.closest('.reply-preview'))return;
+         e.target.closest('.reply-preview')||e.target.closest('.edit-input')||
+         e.target.closest('.edit-actions'))return;
       if(timer)clearTimeout(timer);
       timer=setTimeout(()=>{
         if(navigator.vibrate)navigator.vibrate(15);
@@ -833,23 +772,19 @@
     if(el)el.innerHTML='<div>📥 در حال دریافت… '+pct+'%</div><div class="bar-bg"><div class="bar-fill" style="width:'+pct+'%"></div></div>';
   }
 
-  function updateMessageReactions(msgId){
-    const rec=messagesById[msgId];
-    if (!rec) return;
-    const oldRx = rec.el.querySelector('.reactions');
-    if (oldRx) oldRx.remove();
-    const html = renderReactions(msgId);
-    if (!html) return;
-    const tmp = document.createElement('div');
-    tmp.innerHTML = html;
-    const newRx = tmp.firstChild;
-    const meta = rec.el.querySelector('.meta');
-    if (meta) rec.el.insertBefore(newRx, meta);
-    newRx.querySelectorAll('.rx').forEach(rxEl => {
-      rxEl.onclick = (e) => {
-        e.stopPropagation();
-        toggleReaction(msgId, rxEl.dataset.emoji);
-      };
+  function updateMessageReactions(msgId, reactions){
+    const rec=messagesById[msgId]; if(!rec)return;
+    rec.data.reactions=reactions||{};
+    const oldRx=rec.el.querySelector('.reactions');
+    if(oldRx)oldRx.remove();
+    const html=renderReactions(rec.data);
+    if(!html)return;
+    const tmp=document.createElement('div'); tmp.innerHTML=html;
+    const newRx=tmp.firstChild;
+    const meta=rec.el.querySelector('.meta');
+    if(meta)rec.el.insertBefore(newRx,meta);
+    newRx.querySelectorAll('.rx').forEach(rxEl=>{
+      rxEl.onclick=e=>{e.stopPropagation();toggleReaction(msgId,rxEl.dataset.emoji);};
     });
   }
 
@@ -878,7 +813,7 @@
       else if(rxEl)rxEl.before(textEl);
       else if(metaEl)rec.el.insertBefore(textEl,metaEl);
     }
-    textEl.innerHTML=esc(text)+(edited?' <span class="edited">(ویرایش شده)</span>':'');
+    textEl.innerHTML=text?(esc(text)+(edited?' <span class="edited">(ویرایش شده)</span>':'')):'';
   }
 
   function removeMessage(id){
@@ -891,21 +826,20 @@
     rec.el.remove(); delete messagesById[id];
   }
 
-  // ── ادغام پیام‌ها (b برنده است) ──
   function mergeById(a,b){
     const map=new Map();
-    (a||[]).forEach(m=>map.set(m.id,Object.assign({},m)));
-    (b||[]).forEach(m=>{
-      const old=map.get(m.id);
-      if(!old){map.set(m.id,Object.assign({},m));return;}
-      const merged=Object.assign({},old,m); // b برنده
-      // حفظ media data لوکال اگه b نداره
-      const oldData = old.media && old.media.data;
-      const newData = m.media && m.media.data;
-      if (oldData && !newData) {
-        merged.media = Object.assign({}, m.media || {}, old.media);
+    a.forEach(m=>map.set(m.id,m));
+    b.forEach(local=>{
+      const remote=map.get(local.id);
+      if(!remote){map.set(local.id,local);return;}
+      const merged=Object.assign({},remote);
+      if(local.media&&local.media.data){
+        merged.media=Object.assign({},remote.media||{},local.media);
       }
-      map.set(m.id,merged);
+      if((!remote.reactions||!Object.keys(remote.reactions).length)&&local.reactions&&Object.keys(local.reactions).length){
+        merged.reactions=local.reactions;
+      }
+      map.set(local.id,merged);
     });
     return [...map.values()].sort((x,y)=>x.time-y.time);
   }
@@ -931,6 +865,9 @@
       if(m.id===editingId)return;
       const rec=messagesById[m.id];
       if(!rec){
+        if(remoteReactions[m.id]){
+          m.reactions = remoteReactions[m.id];
+        }
         const dk=dayKey(m.time);
         if(dk!==lastDay){
           const sep=document.createElement('div');
@@ -942,7 +879,12 @@
         messagesById[m.id]={data:m,el:el};
         messagesEl.appendChild(el); added++;
       }else{
-        if(rec.data.text!==m.text||rec.data.edited!==m.edited)updateMessageText(m.id,m.text,m.edited);
+        if(rec.data.text!==m.text||rec.data.edited!==m.edited){
+          updateMessageText(m.id,m.text,m.edited);
+        }
+        if(JSON.stringify(rec.data.reactions||{})!==JSON.stringify(m.reactions||{})){
+          updateMessageReactions(m.id,m.reactions);
+        }
         rec.data=m; lastDay=dayKey(m.time);
       }
     });
@@ -952,10 +894,10 @@
 
   function showReactionPicker(m){
     reactionTargetId=m.id;
-    const combined = getCombinedReactions(m.id);
+    const r=m.reactions||{};
     reactionPicker.querySelectorAll('button').forEach(b=>{
       const e=b.dataset.emoji;
-      b.classList.toggle('active',!!(combined[e]&&combined[e].includes(myName)));
+      b.classList.toggle('active',!!(r[e]&&r[e].includes(myName)));
     });
     reactionPicker.classList.remove('hidden');
     backdrop.classList.remove('hidden');
@@ -971,16 +913,23 @@
   backdrop.onclick=()=>{hideReactionPicker();hideEmojiPanel();hideThemeSheet();};
 
   function toggleReaction(msgId, emoji){
-    if (!myReactions[msgId]) myReactions[msgId] = [];
-    const arr = myReactions[msgId];
-    const idx = arr.indexOf(emoji);
-    if (idx >= 0) arr.splice(idx, 1);
-    else arr.push(emoji);
-    if (arr.length === 0) delete myReactions[msgId];
+    const m=myMessages.find(x=>x.id===msgId)||theirMessages.find(x=>x.id===msgId);
+    if(!m)return;
+    const base = Object.assign({}, remoteReactions[msgId] || {}, m.reactions || {});
+    if(!base[emoji]) base[emoji] = [];
+    const arr = Array.from(new Set(base[emoji]));
+    const idx=arr.indexOf(myName);
+    if(idx>=0)arr.splice(idx,1); else arr.push(myName);
+    if(arr.length===0)delete base[emoji];
+    else base[emoji] = arr;
 
-    updateMessageReactions(msgId);
-    saveReactionState();
-    publishReactionState();
+    m.reactions = base;
+    remoteReactions[msgId] = base;
+    updateMessageReactions(msgId,m.reactions);
+    saveQuick();
+    if(client&&client.connected){
+      client.publish(REACTION_BASE+'/'+msgId,JSON.stringify({r:base}),{qos:1,retain:true});
+    }
   }
 
   EMOJIS.forEach(e=>{
@@ -1071,7 +1020,7 @@
 
   function setReply(m){
     replyingTo={
-      id:m.id,sender:m.sender,text:m.text,
+      id:m.id, sender:m.sender, text:m.text,
       hasImage:!!(m.media&&(m.media.data||m.media.chunks)&&(m.media.type||'image')==='image'),
       hasAudio:!!(m.media&&(m.media.data||m.media.chunks)&&m.media.type==='audio')
     };
@@ -1086,13 +1035,12 @@
   function cancelReply(){replyingTo=null;replyBanner.classList.add('hidden');}
   $('cancelReply').onclick=cancelReply;
 
-  // ── ویرایش (فوری، بدون تأخیر) ──
   function startEdit(m){
     if(editingId)return;
     editingId=m.id;
     const rec=messagesById[m.id];
     let textEl=rec.el.querySelector('.text');
-    const original=m.text;
+    const original=m.text||'';
 
     if(!textEl){
       textEl=document.createElement('div'); textEl.className='text';
@@ -1102,69 +1050,35 @@
       else if(metaEl)rec.el.insertBefore(textEl,metaEl);
     }
 
-    textEl.innerHTML='<textarea class="edit-input"></textarea><div class="edit-actions"><button class="cancel" type="button">لغو</button><button class="save" type="button">ذخیره</button></div>';
+    textEl.innerHTML='<textarea class="edit-input" rows="4"></textarea><div class="edit-actions"><button class="cancel" type="button">لغو</button><button class="save" type="button">ذخیره</button></div>';
     const ta=textEl.querySelector('textarea');
     ta.value=original;
-    setTimeout(()=>{ta.focus();try{ta.setSelectionRange(original.length,original.length);}catch(e){}}, 50);
+    ta.focus();
+    try{ta.setSelectionRange(original.length,original.length);}catch(e){}
+    const autosize=()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,240)+'px';};
+    ta.addEventListener('input',autosize);
+    setTimeout(autosize,0);
 
-    // جلوگیری از بسته شدن به خاطر long-press
-    const stopProp = (ev) => { ev.stopPropagation(); };
-    ta.addEventListener('touchstart', stopProp, {passive:true});
-    ta.addEventListener('mousedown', stopProp);
-    textEl.addEventListener('touchstart', stopProp, {passive:true});
-    textEl.addEventListener('mousedown', stopProp);
-
-    let saved = false;
+    let done=false;
     const finish=(newText)=>{
-      if (saved) return;
-      saved = true;
-      editingId = null;
-
-      const trimmed = String(newText == null ? '' : newText);
-      const finalText = trimmed;
-      const changed = finalText !== original;
-
-      if (changed) {
-        // آپدیت در myMessages
-        const mm = myMessages.find(x => x.id === m.id);
-        if (mm) { mm.text = finalText; mm.edited = true; }
-        // آپدیت در messagesById
-        rec.data.text = finalText;
-        rec.data.edited = true;
-      }
-
-      // آپدیت فوری DOM — بدون renderAll
-      textEl.innerHTML = finalText
-        ? (esc(finalText) + (changed ? ' <span class="edited">(ویرایش شده)</span>' : (m.edited ? ' <span class="edited">(ویرایش شده)</span>' : '')))
-        : (m.edited || changed ? '' : '');
-
-      if (changed) {
-        // پابلیش به MQTT (بدون تأخیر)
-        try { publishMyHistory(); } catch(e) { console.warn(e); }
-        try { saveQuick(); } catch(e) { console.warn(e); }
+      if(done)return;
+      done=true;
+      editingId=null;
+      const trimmed = newText==null?null:String(newText).trim();
+      if(trimmed!==null && trimmed!==original){
+        const mm=myMessages.find(x=>x.id===m.id);
+        if(mm){mm.text=trimmed;mm.edited=true;}
+        rec.data.text=trimmed;
+        rec.data.edited=true;
+        updateMessageText(m.id,trimmed,true);
+        saveQuick();
+        publishMyHistory();
+      } else {
+        updateMessageText(m.id, original, !!m.edited);
       }
     };
-
-    // use pointerdown برای واکنش سریع‌تر
-    const saveBtn = textEl.querySelector('.save');
-    const cancelBtn = textEl.querySelector('.cancel');
-
-    const doSave = (e) => {
-      if (e) { e.preventDefault(); e.stopPropagation(); }
-      finish(ta.value);
-    };
-    const doCancel = (e) => {
-      if (e) { e.preventDefault(); e.stopPropagation(); }
-      finish(null);
-    };
-
-    saveBtn.addEventListener('click', doSave);
-    saveBtn.addEventListener('touchend', doSave, {passive:false});
-    saveBtn.addEventListener('pointerup', doSave);
-
-    cancelBtn.addEventListener('click', doCancel);
-    cancelBtn.addEventListener('touchend', doCancel, {passive:false});
-    cancelBtn.addEventListener('pointerup', doCancel);
+    textEl.querySelector('.cancel').onclick=(e)=>{e.stopPropagation();finish(null);};
+    textEl.querySelector('.save').onclick=(e)=>{e.stopPropagation();finish(ta.value);};
   }
 
   function startDelete(id){pendingDeleteId=id;deleteModal.classList.remove('hidden');}
@@ -1176,7 +1090,9 @@
         deletedIds.add(id); publishDeleted();
         if(client&&client.connected){
           for(let i=0;i<300;i++)client.publish(CHUNK_BASE+'/'+id+'/'+i,'',{qos:1,retain:true});
+          client.publish(REACTION_BASE+'/'+id,'',{qos:1,retain:true});
         }
+        delete remoteReactions[id];
       }else hiddenIds.add(id);
       saveQuick(); renderAll();
       deleteModal.classList.add('hidden'); pendingDeleteId=null;
@@ -1190,7 +1106,7 @@
     const msg={id:uid(),sender:myName,text,time:Date.now(),edited:false};
     if(replyingTo){
       msg.replyPreview={
-        targetId: replyingTo.id,
+        id: replyingTo.id,
         sender:replyingTo.sender,
         text:replyingTo.text,
         hasImage:replyingTo.hasImage,
@@ -1250,7 +1166,6 @@
     return arr.map(m=>{
       const copy=Object.assign({},m);
       if(copy.media&&copy.media.data){copy.media=Object.assign({},copy.media);delete copy.media.data;}
-      delete copy.reactions; // ری‌اکشن جدا مدیریت می‌شه
       return copy;
     });
   }
@@ -1265,7 +1180,7 @@
     const msgId=uid();
     const captureText=extraText!==undefined?extraText:msgInput.value.trim();
     const captureReply=extraReply!==undefined?extraReply:(replyingTo?{
-      targetId: replyingTo.id,
+      id:replyingTo.id,
       sender:replyingTo.sender,text:replyingTo.text,hasImage:replyingTo.hasImage,hasAudio:replyingTo.hasAudio
     }:null);
 
@@ -1420,7 +1335,7 @@
         if(dataUrl.length>2.5*1024*1024){alert('صدای ضبط‌شده زیاده. کوتاه‌تر بگو.');return;}
         const captureText=msgInput.value.trim();
         const captureReply=replyingTo?{
-          targetId: replyingTo.id,
+          id:replyingTo.id,
           sender:replyingTo.sender,text:replyingTo.text,hasImage:replyingTo.hasImage,hasAudio:replyingTo.hasAudio
         }:null;
         await sendMediaData(dataUrl,'audio',captureText,captureReply,duration);
@@ -1493,9 +1408,10 @@
     }
   };
 
+  // ⚡ QoS 0 → ارسال فوری حذف
   function publishDeleted(){
     if(!client||!client.connected)return;
-    client.publish(TOPIC_DELETED,JSON.stringify({ids:[...deletedIds]}),{qos:1,retain:true});
+    client.publish(TOPIC_DELETED,JSON.stringify({ids:[...deletedIds]}),{qos:0,retain:true});
   }
   function publishSeen(force){
     const now=Date.now();
@@ -1522,19 +1438,16 @@
     client.on('connect',()=>{
       client.subscribe(TOPIC_MINE,{qos:1});
       client.subscribe(TOPIC_THEIRS,{qos:1});
-      client.subscribe(TOPIC_DELETED,{qos:1});
+      // ⚡ QoS 0 برای حذف → دریافت فوری
+      client.subscribe(TOPIC_DELETED,{qos:0});
       client.subscribe(TOPIC_SEEN_THEIRS,{qos:1});
+      client.subscribe(REACTION_BASE+'/#',{qos:1});
       client.subscribe(TOPIC_THEME_MINE,{qos:1});
       client.subscribe(TOPIC_TYPING_THEIRS,{qos:0});
       client.subscribe(TOPIC_AVATAR_MINE,{qos:1});
       client.subscribe(TOPIC_AVATAR_THEIRS,{qos:1});
       client.subscribe(TOPIC_WALL_MINE,{qos:1});
-      client.subscribe(TOPIC_REACT_THEIRS,{qos:1});
       for(const msgId in pendingChunks)client.subscribe(CHUNK_BASE+'/'+msgId+'/#',{qos:1});
-
-      // انتشار وضعیت ری‌اکشن خودم
-      publishReactionState();
-
       publishSeen(true);
       setTimeout(()=>publishSeen(true),500);
       startSeenHeartbeat();
@@ -1543,20 +1456,18 @@
     client.on('message',(topic,payload)=>{
       if(CHUNK_BASE&&topic.startsWith(CHUNK_BASE+'/')){handleChunkMessage(topic,payload);return;}
 
-      // ── ری‌اکشن‌های طرف مقابل ──
-      if (topic === TOPIC_REACT_THEIRS) {
-        try {
-          const d = JSON.parse(payload.toString());
-          theirReactions = d.r || {};
-          saveReactionState();
-          // آپدیت همه پیام‌های نمایش داده شده
-          for (const msgId in messagesById) {
-            updateMessageReactions(msgId);
-          }
-        } catch(e){}
+      if(REACTION_BASE&&topic.startsWith(REACTION_BASE+'/')){
+        const msgId=topic.slice(REACTION_BASE.length+1);
+        let data; try{data=JSON.parse(payload.toString());}catch{return;}
+        const r=data.r||{};
+        remoteReactions[msgId]=r;
+        const m=myMessages.find(x=>x.id===msgId)||theirMessages.find(x=>x.id===msgId);
+        if(m){m.reactions=r;}
+        const rec=messagesById[msgId];
+        if(rec){rec.data.reactions=r;updateMessageReactions(msgId,r);}
+        saveQuick();
         return;
       }
-
       if(topic===TOPIC_THEME_MINE){
         try{
           const d=JSON.parse(payload.toString());
@@ -1616,7 +1527,15 @@
       let data; try{data=JSON.parse(payload.toString());}catch{return;}
       if(topic===TOPIC_MINE){
         const serverMsgs=data.messages||[];
-        // لوکال برنده (چون پیام‌های خودمونه)
+        if (serverMsgs.length === myMessages.length) {
+          let same = true;
+          for (let i = 0; i < serverMsgs.length; i++) {
+            if (serverMsgs[i].id !== myMessages[i].id || serverMsgs[i].text !== myMessages[i].text || serverMsgs[i].edited !== myMessages[i].edited) {
+              same = false; break;
+            }
+          }
+          if (same) return;
+        }
         myMessages=mergeById(serverMsgs,myMessages);
         saveQuick(); renderAll();
         return;
@@ -1624,8 +1543,16 @@
       if(topic===TOPIC_THEIRS){
         const serverMsgs=data.messages||[];
         const prevCount=theirMessages.length;
-        // سرور برنده (چون پیام‌های طرف مقابله)
-        theirMessages=mergeById(theirMessages,serverMsgs);
+        theirMessages=mergeById(serverMsgs,theirMessages);
+        theirMessages.forEach(m=>{
+          const rec=messagesById[m.id];
+          if(rec){
+            if(rec.data.text!==m.text||rec.data.edited!==m.edited){
+              rec.data.text=m.text;rec.data.edited=m.edited;
+              updateMessageText(m.id,m.text,m.edited);
+            }
+          }
+        });
         saveQuick(); renderAll();
         if(theirMessages.length>prevCount){
           publishSeen(true);
@@ -1634,11 +1561,24 @@
         }else publishSeen();
         return;
       }
+      // ⚡ حذف: ذخیره سبک (بدون مدیا) تا فوری پاک بشه
       if(topic===TOPIC_DELETED){
         const arr=data.ids||[];
         let changed=false;
         arr.forEach(id=>{if(!deletedIds.has(id)){deletedIds.add(id);changed=true;}});
-        if(changed){saveQuick();if(client.connected)publishDeleted();renderAll();}
+        if(changed){
+          // ذخیره سبک: فقط deletedIds رو آپدیت کن، کل saveQuick رو صدا نزن
+          try{
+            const raw=localStorage.getItem(quickKey(myName));
+            if(raw){
+              const p=JSON.parse(raw);
+              p.deleted=[...deletedIds];
+              localStorage.setItem(quickKey(myName), JSON.stringify(p));
+            }
+          }catch(e){}
+          publishDeleted();
+          renderAll();
+        }
         return;
       }
       if(topic===TOPIC_SEEN_THEIRS){
@@ -1660,7 +1600,7 @@
 
   async function startSession(user, code){
     myName=user;
-    otherName=(user==='Hatami')?'Armin':'Hatami';
+    const otherName=(user==='Hatami')?'Armin':'Hatami';
     peerNameEl.textContent=otherName;
     myNameValue.textContent=myName;
     localStorage.setItem('chat_user',user);
@@ -1669,7 +1609,6 @@
     applyTheme(localStorage.getItem('chat_theme_'+myName)||'black',false);
     loadAvatarFromCache();
     loadWallpaperFromCache();
-    loadReactionState();
 
     loadQuick();
     messagesById={}; pendingChunks={}; receivingState={};
@@ -1686,14 +1625,13 @@
     TOPIC_SEEN_MINE    ='pc/'+ROOM_HASH+'/S/'+myName;
     TOPIC_SEEN_THEIRS  ='pc/'+ROOM_HASH+'/S/'+otherName;
     CHUNK_BASE         ='pc/'+ROOM_HASH+'/C';
+    REACTION_BASE      ='pc/'+ROOM_HASH+'/R';
     TOPIC_THEME_MINE   ='pc/'+ROOM_HASH+'/T/'+myName;
     TOPIC_TYPING_MINE  ='pc/'+ROOM_HASH+'/TY/'+myName;
     TOPIC_TYPING_THEIRS='pc/'+ROOM_HASH+'/TY/'+otherName;
     TOPIC_AVATAR_MINE  ='pc/'+ROOM_HASH+'/AV/'+myName;
     TOPIC_AVATAR_THEIRS='pc/'+ROOM_HASH+'/AV/'+otherName;
     TOPIC_WALL_MINE    ='pc/'+ROOM_HASH+'/WP/'+myName;
-    TOPIC_REACT_MINE   ='pc/'+ROOM_HASH+'/RX/'+myName;
-    TOPIC_REACT_THEIRS ='pc/'+ROOM_HASH+'/RX/'+otherName;
 
     connectMQTT();
     startStatusTimer();
@@ -1710,13 +1648,13 @@
     localStorage.removeItem('chat_user');
     localStorage.removeItem('chat_code');
 
-    myName=null; otherName=null;
+    myName=null;
     myMessages=[]; theirMessages=[];
     deletedIds=new Set(); hiddenIds=new Set();
     messagesById={}; pendingChunks={}; receivingState={};
-    myReactions={}; theirReactions={};
     pendingDeleteId=null; editingId=null; replyingTo=null;
     peerSeenUpTo=0; lastSeenPublish=0;
+    remoteReactions={};
 
     messagesEl.innerHTML='';
     messagesEl.style.backgroundImage='';
